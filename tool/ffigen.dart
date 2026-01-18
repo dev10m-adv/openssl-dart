@@ -5,7 +5,7 @@ import 'package:logging/logging.dart';
 
 void main() {
   final packageRoot = Platform.script.resolve('../');
-  final opensslInclude = packageRoot.resolve('src/third_party/openssl/include/');
+  final opensslInclude = packageRoot.resolve('openssl_repo/include/');
   // Only expose the public OpenSSL headers; internal crypto headers (e.g.
   // crypto/md32_common.h) expect algorithm-specific macros and fail if parsed
   // standalone.
