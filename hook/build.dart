@@ -2,8 +2,6 @@ import 'dart:io';
 
 import 'package:code_assets/code_assets.dart';
 import 'package:hooks/hooks.dart';
-import 'package:logging/logging.dart';
-import 'package:native_toolchain_c/src/cbuilder/compiler_resolver.dart';
 
 const version = '3.5.4';
 const sourceCodeUrl = 'https://github.com/openssl/openssl/releases/download/openssl-$version/openssl-$version.tar.gz';
