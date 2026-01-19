@@ -1,5 +1,5 @@
 name: openssl
-description: A starting point for Dart libraries or applications.
+description: OpenSSL library for Dart, exposes full C API to Dart via FFI. Native-assets build that compiles OpenSSL from source.
 version: 1.0.0
 repository: https://github.com/LucazzP/openssl_dart
 
