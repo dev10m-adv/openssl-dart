@@ -60,7 +60,12 @@ void main(List<String> args) async {
           );
 
           // run jom to build the library
-          await runProcess(jomProgram, ['-j', '${Platform.numberOfProcessors}'], workingDirectory: openSslDir, extraEnvironment: msvcEnv);
+          await runProcess(
+            jomProgram,
+            ['-j', '${Platform.numberOfProcessors}'],
+            workingDirectory: openSslDir,
+            extraEnvironment: msvcEnv,
+          );
 
           // delete perl and jom if downloaded
           if (needDownloadPerl) {
@@ -72,6 +77,11 @@ void main(List<String> args) async {
           break;
         case OS.macOS:
         case OS.linux:
+          final hasPerl = await isProgramInstalled('perl');
+          if (!hasPerl) {
+            throw Exception('perl is not installed, please install it to be able to build openssl.');
+          }
+
           // run ./Configure with the target OS and architecture
           await runProcess('./Configure', [configName, ...configArgs], workingDirectory: openSslDir);
 
@@ -80,12 +90,13 @@ void main(List<String> args) async {
           break;
       }
 
-      // copy the library to the output directory
+      // determine the libName from OS and Link mode
       final libName = switch ((input.config.code.targetOS, input.config.code.linkModePreference)) {
         (OS.windows, LinkModePreference.static || LinkModePreference.preferStatic) => 'libcrypto_static.lib',
         (OS.macOS, LinkModePreference.static || LinkModePreference.preferStatic) => 'libcrypto.a',
         (OS.linux, LinkModePreference.static || LinkModePreference.preferStatic) => 'libcrypto.a',
-        (OS.windows, LinkModePreference.dynamic || LinkModePreference.preferDynamic) => 'libcrypto-3-${input.config.code.targetArchitecture.name}.dll',
+        (OS.windows, LinkModePreference.dynamic || LinkModePreference.preferDynamic) =>
+          'libcrypto-3-${input.config.code.targetArchitecture.name}.dll',
         (OS.macOS, LinkModePreference.dynamic || LinkModePreference.preferDynamic) => 'libcrypto.dylib',
         (OS.linux, LinkModePreference.dynamic || LinkModePreference.preferDynamic) => 'libcrypto.so',
         _ => throw UnsupportedError(
@@ -93,6 +104,7 @@ void main(List<String> args) async {
         ),
       };
 
+      // copy the library to the output directory
       final libPath = outputDir.resolve(libName).toFilePath(windows: Platform.isWindows);
       await File(openSslDir.resolve(libName).toFilePath(windows: Platform.isWindows)).copy(libPath);
 
