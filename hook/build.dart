@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:code_assets/code_assets.dart';
 import 'package:hooks/hooks.dart';
 
+import 'android_ndk.dart';
+
 const version = '3.5.4';
 const sourceCodeUrl = 'https://github.com/openssl/openssl/releases/download/openssl-$version/openssl-$version.tar.gz';
 const openSslDirName = 'openssl-$version';
@@ -26,7 +28,21 @@ void main(List<String> args) async {
 
       // build source code, depends on the OS we are running on
       // Read https://github.com/openssl/openssl/blob/openssl-3.5.4/INSTALL.md#building-openssl
-      final configName = resolveConfigName(input.config.code.targetOS, input.config.code.targetArchitecture);
+      final configName = resolveConfigName(
+        input.config.code.targetOS,
+        input.config.code.targetArchitecture,
+        input.config.code.targetOS == OS.iOS ? input.config.code.iOS.targetSdk : null,
+      );
+      if (input.config.code.targetOS == OS.android) {
+        final ndkRoot = await resolveAndroidNdkRoot();
+        environment['ANDROID_NDK_ROOT'] = ndkRoot;
+        environment['ANDROID_NDK_HOME'] = ndkRoot;
+
+        final toolchainBin = resolveAndroidToolchainBinDir(ndkRoot);
+        final existingPath = Platform.environment['PATH'] ?? '';
+        final pathSeparator = Platform.isWindows ? ';' : ':';
+        environment['PATH'] = '$toolchainBin$pathSeparator$existingPath';
+      }
       switch (OS.current) {
         case OS.windows:
           final msvcEnv = await resolveWindowsBuildEnvironment(input.config.code.targetArchitecture);
@@ -93,12 +109,12 @@ void main(List<String> args) async {
       // determine the libName from OS and Link mode
       final libName = switch ((input.config.code.targetOS, input.config.code.linkModePreference)) {
         (OS.windows, LinkModePreference.static || LinkModePreference.preferStatic) => 'libcrypto_static.lib',
-        (OS.macOS, LinkModePreference.static || LinkModePreference.preferStatic) => 'libcrypto.a',
-        (OS.linux, LinkModePreference.static || LinkModePreference.preferStatic) => 'libcrypto.a',
+        (OS.macOS || OS.iOS, LinkModePreference.static || LinkModePreference.preferStatic) => 'libcrypto.a',
+        (OS.linux || OS.android, LinkModePreference.static || LinkModePreference.preferStatic) => 'libcrypto.a',
         (OS.windows, LinkModePreference.dynamic || LinkModePreference.preferDynamic) =>
           'libcrypto-3-${input.config.code.targetArchitecture.name}.dll',
-        (OS.macOS, LinkModePreference.dynamic || LinkModePreference.preferDynamic) => 'libcrypto.dylib',
-        (OS.linux, LinkModePreference.dynamic || LinkModePreference.preferDynamic) => 'libcrypto.so',
+        (OS.macOS || OS.iOS, LinkModePreference.dynamic || LinkModePreference.preferDynamic) => 'libcrypto.dylib',
+        (OS.linux || OS.android, LinkModePreference.dynamic || LinkModePreference.preferDynamic) => 'libcrypto.so',
         _ => throw UnsupportedError(
           'Unsupported target OS: ${input.config.code.targetOS.name} or link mode preference: ${input.config.code.linkModePreference.name}',
         ),
@@ -142,7 +158,8 @@ Future<bool> isProgramInstalled(String programName) async {
   }
 }
 
-String resolveConfigName(OS os, Architecture architecture) {
+String resolveConfigName(OS os, Architecture architecture, IOSSdk? iosSdk) {
+  final isIosSimulator = iosSdk == IOSSdk.iPhoneSimulator;
   return switch ((os, architecture)) {
     (OS.android, Architecture.arm) => 'android-arm',
     (OS.android, Architecture.arm64) => 'android-arm64',
@@ -151,7 +168,7 @@ String resolveConfigName(OS os, Architecture architecture) {
     (OS.android, Architecture.riscv64) => 'android-riscv64',
 
     (OS.iOS, Architecture.arm) => 'ios-xcrun',
-    (OS.iOS, Architecture.arm64) => 'ios64-xcrun',
+    (OS.iOS, Architecture.arm64) => isIosSimulator ? 'iossimulator-arm64-xcrun' : 'ios64-xcrun',
     (OS.iOS, Architecture.ia32) => 'iossimulator-i386-xcrun',
     (OS.iOS, Architecture.x64) => 'iossimulator-x86_64-xcrun',
 
