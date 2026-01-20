@@ -1,6 +1,11 @@
 > Minimum Dart SDK 3.10 (Flutter 3.38) with Native Assets/hooks support.
 
+[![pub.dev](https://img.shields.io/pub/v/openssl.svg)](https://pub.dev/packages/openssl)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 This package builds OpenSSL from source and exposes its full C surface directly to Dart via FFI. There are no Dart-side abstractions: call the OpenSSL APIs as you would in C, manage memory manually, and follow the official OpenSSL documentation for usage and lifetime rules.
+
+If you want background on how this package is built with hooks/native assets, see the article: [Dart build hooks: create Dart packages from C libs](https://medium.com/@lucazzp/dart-build-hooks-create-dart-packages-from-c-libs-10cbb9360a69).
 
 ## What you get
 
