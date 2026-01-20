@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:code_assets/code_assets.dart';
 import 'package:hooks/hooks.dart';
 
-import 'android_ndk.dart';
+import '../lib/src/android_ndk.dart';
 
 const version = '3.5.4';
 const sourceCodeUrl = 'https://github.com/openssl/openssl/releases/download/openssl-$version/openssl-$version.tar.gz';
