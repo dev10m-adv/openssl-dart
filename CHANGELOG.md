@@ -1,5 +1,6 @@
 ## 1.1.1
 
+- Canonical git repository: [advforks/openssl-dart](https://github.com/advforks/openssl-dart) (non-fork; supports Git LFS prebuilts). The former `advforks/openssl_dart` fork remains read-only on GitHub.
 - Track `prebuilt/` with Git LFS; exclude prebuilts from pub.dev (`.pubignore`).
 - Hook ignores LFS pointer stubs; add `dart run tool/verify_prebuilts.dart`.
 - Expand prebuilts CI matrix (Linux, macOS, Windows x64/ARM64).

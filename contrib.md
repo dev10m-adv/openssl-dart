@@ -4,7 +4,7 @@
 - **Git LFS** is required for `prebuilt/` binaries:
   ```bash
   git lfs install
-  git clone --recurse-submodules <repo>
+  git clone --recurse-submodules https://github.com/advforks/openssl-dart.git
   cd openssl_dart
   git lfs pull
   dart run tool/verify_prebuilts.dart

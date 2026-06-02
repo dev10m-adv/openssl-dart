@@ -3,6 +3,8 @@
 [![pub.dev](https://img.shields.io/pub/v/openssl.svg)](https://pub.dev/packages/openssl)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
+**Git (with prebuilts):** clone [github.com/advforks/openssl-dart](https://github.com/advforks/openssl-dart) and run `git lfs pull` (see [`prebuilt/README.md`](prebuilt/README.md)).
+
 This package ships **OpenSSL 3.5.4 libcrypto** (no libssl/TLS) for Dart and Flutter via FFI and Native Assets. Bindings mirror the libcrypto C API; you manage memory and lifetimes using the [OpenSSL documentation](https://docs.openssl.org/).
 
 Background on hooks/native assets: [Dart build hooks: create Dart packages from C libs](https://medium.com/@lucazzp/dart-build-hooks-create-dart-packages-from-c-libs-10cbb9360a69).
