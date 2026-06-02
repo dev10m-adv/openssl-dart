@@ -1,3 +1,9 @@
+## 1.1.1
+
+- Track `prebuilt/` with Git LFS; exclude prebuilts from pub.dev (`.pubignore`).
+- Hook ignores LFS pointer stubs; add `dart run tool/verify_prebuilts.dart`.
+- Expand prebuilts CI matrix (Linux, macOS, Windows x64/ARM64).
+
 ## 1.1.0
 
 - Scope package to **libcrypto only**: trimmed FFI bindings (no libssl/TLS symbols).

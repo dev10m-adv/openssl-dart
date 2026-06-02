@@ -51,9 +51,11 @@ import 'package:openssl/openssl.dart' as openssl;
 
 See [`example/main.dart`](example/main.dart) for AES-256-CBC. Follow OpenSSL docs for `OPENSSL_free`, `EVP_*_free`, etc.
 
-## Prebuilt binaries
+## Prebuilt binaries (git clones only)
 
-Shipped under [`prebuilt/`](prebuilt/README.md) when available:
+Shipped under [`prebuilt/`](prebuilt/README.md) via **Git LFS** when you clone this repository (`git lfs pull`). They are **not** included on pub.dev (smaller package; first run compiles from source).
+
+Layout when available:
 
 ```
 prebuilt/3.5.4/<os>-<arch>[-<iosSdk>]-<static|dynamic>/libcrypto.*

@@ -20,5 +20,16 @@ File? findPrebuiltLibcrypto({
   );
   final libName = resolveLibFileName(targetOS, architecture, linkMode);
   final candidate = File.fromUri(packageRoot.resolve('prebuilt/$key/$libName'));
-  return candidate.existsSync() ? candidate : null;
+  if (!candidate.existsSync()) {
+    return null;
+  }
+  // Git LFS pointer files are tiny; treat as missing so the hook compiles instead.
+  if (candidate.lengthSync() < 4096) {
+    print(
+      'openssl: ignoring prebuilt at ${candidate.path} (${candidate.lengthSync()} bytes); '
+      'run `git lfs pull` or compile from source',
+    );
+    return null;
+  }
+  return candidate;
 }

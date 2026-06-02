@@ -1,19 +1,3 @@
-# Prebuilt libcrypto artifacts
-
-Place compiled `libcrypto` binaries here to skip the source compile step. The build hook looks up:
-
-```
-prebuilt/<version>/<os>-<arch>[-<iosSdk>]-<static|dynamic>/<libcrypto file>
-```
-
-Examples:
-
-- `prebuilt/3.5.4/windows-arm64-dynamic/libcrypto-3-arm64.dll` (~6.9 MB, built on Windows ARM64)
-- `prebuilt/3.5.4/windows-x64-static/libcrypto_static.lib`
-- `prebuilt/3.5.4/linux-x64-static/libcrypto.a`
-- `prebuilt/3.5.4/android-arm64-static/libcrypto.a`
-- `prebuilt/3.5.4/ios-arm64-iPhoneOS-static/libcrypto.a`
-
-Generate artifacts with `dart run tool/build_prebuilts.dart` on each supported host, or from CI (see `.github/workflows/prebuilts.yml`).
-
-When no prebuilt exists for a target triple, the hook compiles OpenSSL from source (if the host supports that target).
+version https://git-lfs.github.com/spec/v1
+oid sha256:79460f1e4a3b75230f3e4bf89285cff7ca704b8ce24102aabc6786707d5317ae
+size 1875

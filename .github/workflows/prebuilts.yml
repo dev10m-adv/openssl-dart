@@ -5,24 +5,34 @@ on:
     types: [published]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build-prebuilts:
-    name: ${{ matrix.os }}-${{ matrix.arch }}
+    name: build-${{ matrix.artifact }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
-            arch: x64
+            artifact: linux-x64-dynamic
+            triple: 3.5.4/linux-x64-dynamic
           - os: macos-latest
-            arch: arm64
+            artifact: macos-arm64-dynamic
+            triple: 3.5.4/macos-arm64-dynamic
           - os: windows-latest
-            arch: x64
+            artifact: windows-x64-dynamic
+            triple: 3.5.4/windows-x64-dynamic
+          - os: windows-11-arm
+            artifact: windows-arm64-dynamic
+            triple: 3.5.4/windows-arm64-dynamic
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+          lfs: true
 
       - uses: dart-lang/setup-dart@v1
         with:
@@ -39,14 +49,76 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          TRIPLE="3.5.4/$(uname -s | tr '[:upper:]' '[:lower:]' | sed 's/darwin/macos/')-x64-static"
-          mkdir -p "prebuilt/${TRIPLE}"
-          LIB=$(find .dart_tool/hooks_runner/openssl -name 'libcrypto.a' -o -name 'libcrypto_static.lib' -o -name 'libcrypto*.dll' | head -1)
-          if [ -z "$LIB" ]; then echo "libcrypto not found"; exit 1; fi
-          cp "$LIB" "prebuilt/${TRIPLE}/$(basename "$LIB")"
-          echo "Copied to prebuilt/${TRIPLE}"
+          mkdir -p "prebuilt/${{ matrix.triple }}"
+          LIB=$(find .dart_tool/hooks_runner -type f \( \
+            -name 'libcrypto.a' -o -name 'libcrypto.so' -o -name 'libcrypto.dylib' -o \
+            -name 'libcrypto_static.lib' -o -name 'libcrypto*.dll' \) | head -1)
+          if [ -z "$LIB" ]; then
+            echo "libcrypto artifact not found under .dart_tool/hooks_runner"
+            exit 1
+          fi
+          cp "$LIB" "prebuilt/${{ matrix.triple }}/$(basename "$LIB")"
+          ls -la "prebuilt/${{ matrix.triple }}"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: prebuilt-${{ matrix.os }}
-          path: prebuilt/
+          name: prebuilt-${{ matrix.artifact }}
+          path: prebuilt/${{ matrix.triple }}/
+
+  merge-and-push:
+    name: merge-prebuilts
+    needs: build-prebuilts
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'release'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Download all prebuilt artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: prebuilt-*
+          path: artifacts
+          merge-multiple: false
+
+      - name: Install Git LFS
+        run: |
+          git lfs install
+          git lfs pull
+
+      - name: Merge into prebuilt/
+        run: |
+          set -euo pipefail
+          declare -A MAP=(
+            [linux-x64-dynamic]=3.5.4/linux-x64-dynamic
+            [macos-arm64-dynamic]=3.5.4/macos-arm64-dynamic
+            [windows-x64-dynamic]=3.5.4/windows-x64-dynamic
+            [windows-arm64-dynamic]=3.5.4/windows-arm64-dynamic
+          )
+          for artifact_dir in artifacts/prebuilt-*; do
+            key="${artifact_dir##*/}"
+            key="${key#prebuilt-}"
+            triple="${MAP[$key]}"
+            if [ -z "$triple" ]; then echo "Unknown artifact $key"; exit 1; fi
+            mkdir -p "prebuilt/$triple"
+            cp -v "$artifact_dir"/* "prebuilt/$triple/"
+          done
+          find prebuilt -type f ! -name '*.md' -exec ls -la {} \;
+
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
+      - name: Verify prebuilts are not LFS pointers
+        run: dart run tool/verify_prebuilts.dart
+
+      - name: Commit and push
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add prebuilt/
+          git diff --staged --quiet && echo "No prebuilt changes" && exit 0
+          git commit -m "Update prebuilt libcrypto matrix from CI"
+          git push
