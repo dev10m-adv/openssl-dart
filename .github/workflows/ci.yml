@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  analyze-and-test:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
+      - name: Install Linux build deps
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y perl make curl
+
+      - name: pub get
+        run: dart pub get
+
+      - name: analyze
+        run: dart analyze
+
+      - name: test
+        run: dart test
+
+  flutter-smoke:
+    name: flutter-smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Install build deps
+        run: sudo apt-get update && sudo apt-get install -y perl make curl
+
+      - name: Flutter analyze example
+        working-directory: example/flutter_openssl
+        run: |
+          flutter pub get
+          flutter analyze

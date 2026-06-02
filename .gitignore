@@ -9,3 +9,7 @@ pubspec.lock
 
 # FVM Version Cache
 .fvm/
+
+# Local OpenSSL source extracts
+openssl-3.5.4/
+.dart_tool/openssl-3.5.4.tar.gz

@@ -4,140 +4,186 @@ import 'package:code_assets/code_assets.dart';
 import 'package:hooks/hooks.dart';
 
 import '../lib/src/android_ndk.dart';
+import '../lib/src/build_target.dart';
+import '../lib/src/prebuilt.dart';
 
-const version = '3.5.4';
-const sourceCodeUrl = 'https://github.com/openssl/openssl/releases/download/openssl-$version/openssl-$version.tar.gz';
-const openSslDirName = 'openssl-$version';
-const configArgs = ['no-unit-test', 'no-asm', 'no-makedepend', 'no-ssl', 'no-apps', '-Wl,-headerpad_max_install_names'];
-// 'no-unit-test no-asm no-makedepend no-ssl no-apps -Wl,-headerpad_max_install_names'
-const perlDownloadUrl = 'https://strawberryperl.com/download/5.14.2.1/strawberry-perl-5.14.2.1-64bit-portable.zip';
+const sourceCodeUrl =
+    'https://github.com/openssl/openssl/releases/download/openssl-$openSslVersion/openssl-$openSslVersion.tar.gz';
+const openSslDirName = 'openssl-$openSslVersion';
+const perlDownloadUrlLegacy =
+    'https://strawberryperl.com/download/5.14.2.1/strawberry-perl-5.14.2.1-64bit-portable.zip';
+const perlDownloadUrlModern =
+    'https://github.com/StrawberryPerl/Perl-Dist-Strawberry/releases/download/SP_54021_64bit_UCRT/strawberry-perl-5.40.2.1-64bit-portable.zip';
 const jomDownloadUrl = 'https://download.qt.io/official_releases/jom/jom_1_1_5.zip';
 
 Map<String, String> environment = {};
 
 void main(List<String> args) async {
   await build(args, (input, output) async {
-    if (input.config.buildCodeAssets) {
-      final workDir = input.outputDirectory;
-      final outputDir = input.outputDirectoryShared;
+    if (!input.config.buildCodeAssets) {
+      return;
+    }
 
-      // download source code from openssl
-      await downloadAndExtract(sourceCodeUrl, '$openSslDirName.tar.gz', workDir, createFolderForExtraction: false);
+    final targetOS = input.config.code.targetOS;
+    final architecture = input.config.code.targetArchitecture;
+    final linkMode = input.config.code.linkModePreference;
+    final iosSdk = targetOS == OS.iOS ? input.config.code.iOS.targetSdk : null;
+    final libName = resolveLibFileName(targetOS, architecture, linkMode);
+    final outputDir = input.outputDirectoryShared;
+    final packageRoot = input.packageRoot;
 
-      final openSslDir = workDir.resolve('$openSslDirName/');
+    final prebuilt = findPrebuiltLibcrypto(
+      packageRoot: packageRoot,
+      targetOS: targetOS,
+      architecture: architecture,
+      linkMode: linkMode,
+      iosSdk: iosSdk,
+    );
 
-      // build source code, depends on the OS we are running on
-      // Read https://github.com/openssl/openssl/blob/openssl-3.5.4/INSTALL.md#building-openssl
-      final configName = resolveConfigName(
-        input.config.code.targetOS,
-        input.config.code.targetArchitecture,
-        input.config.code.targetOS == OS.iOS ? input.config.code.iOS.targetSdk : null,
-      );
-      if (input.config.code.targetOS == OS.android) {
-        final ndkRoot = await resolveAndroidNdkRoot();
-        environment['ANDROID_NDK_ROOT'] = ndkRoot;
-        environment['ANDROID_NDK_HOME'] = ndkRoot;
-
-        final toolchainBin = resolveAndroidToolchainBinDir(ndkRoot);
-        final existingPath = Platform.environment['PATH'] ?? '';
-        final pathSeparator = Platform.isWindows ? ';' : ':';
-        environment['PATH'] = '$toolchainBin$pathSeparator$existingPath';
+    if (prebuilt != null) {
+      print('openssl: using prebuilt ${prebuilt.path}');
+      final dest = outputDir.resolve(libName).toFilePath(windows: Platform.isWindows);
+      await prebuilt.copy(dest);
+    } else {
+      final hostRequirement = compileHostRequirement(OS.current, targetOS);
+      if (hostRequirement != null) {
+        throw UnsupportedError(hostRequirement);
       }
-      switch (OS.current) {
-        case OS.windows:
-          final msvcEnv = await resolveWindowsBuildEnvironment(input.config.code.targetArchitecture);
-          // should have perl and jom installed
-          final needDownloadPerl = !await isProgramInstalled('perl');
-          final needDownloadJom = !await isProgramInstalled('jom');
-          var perlProgram = 'perl';
-          var jomProgram = 'jom';
-
-          if (needDownloadPerl) {
-            await downloadAndExtract(perlDownloadUrl, 'perl.zip', workDir);
-            perlProgram = workDir.resolve('./perl/perl/bin/perl.exe').toFilePath(windows: Platform.isWindows);
-          }
-          if (needDownloadJom) {
-            await downloadAndExtract(jomDownloadUrl, 'jom.zip', workDir);
-            jomProgram = workDir.resolve('./jom/jom.exe').toFilePath(windows: Platform.isWindows);
-          }
-
-          // run ./Configure with the target OS and architecture
-          await runProcess(
-            perlProgram,
-            [
-              'Configure',
-              configName,
-              ...configArgs,
-              // needed to build using multiple threads on Windows
-              '/FS',
-            ],
-            workingDirectory: openSslDir,
-            extraEnvironment: msvcEnv,
-          );
-
-          // run jom to build the library
-          await runProcess(
-            jomProgram,
-            ['-j', '${Platform.numberOfProcessors}'],
-            workingDirectory: openSslDir,
-            extraEnvironment: msvcEnv,
-          );
-
-          // delete perl and jom if downloaded
-          if (needDownloadPerl) {
-            await Directory(workDir.resolve('perl').toFilePath(windows: Platform.isWindows)).delete(recursive: true);
-          }
-          if (needDownloadJom) {
-            await Directory(workDir.resolve('jom').toFilePath(windows: Platform.isWindows)).delete(recursive: true);
-          }
-          break;
-        case OS.macOS:
-        case OS.linux:
-          final hasPerl = await isProgramInstalled('perl');
-          if (!hasPerl) {
-            throw Exception('perl is not installed, please install it to be able to build openssl.');
-          }
-
-          // run ./Configure with the target OS and architecture
-          await runProcess('./Configure', [configName, ...configArgs], workingDirectory: openSslDir);
-
-          // run make
-          await runProcess('make', ['-j', '${Platform.numberOfProcessors}'], workingDirectory: openSslDir);
-          break;
-      }
-
-      // determine the libName from OS and Link mode
-      final libName = switch ((input.config.code.targetOS, input.config.code.linkModePreference)) {
-        (OS.windows, LinkModePreference.static || LinkModePreference.preferStatic) => 'libcrypto_static.lib',
-        (OS.macOS || OS.iOS, LinkModePreference.static || LinkModePreference.preferStatic) => 'libcrypto.a',
-        (OS.linux || OS.android, LinkModePreference.static || LinkModePreference.preferStatic) => 'libcrypto.a',
-        (OS.windows, LinkModePreference.dynamic || LinkModePreference.preferDynamic) =>
-          'libcrypto-3-${input.config.code.targetArchitecture.name}.dll',
-        (OS.macOS || OS.iOS, LinkModePreference.dynamic || LinkModePreference.preferDynamic) => 'libcrypto.dylib',
-        (OS.linux || OS.android, LinkModePreference.dynamic || LinkModePreference.preferDynamic) => 'libcrypto.so',
-        _ => throw UnsupportedError(
-          'Unsupported target OS: ${input.config.code.targetOS.name} or link mode preference: ${input.config.code.linkModePreference.name}',
-        ),
-      };
-
-      // copy the library to the output directory
-      final libPath = outputDir.resolve(libName).toFilePath(windows: Platform.isWindows);
-      await File(openSslDir.resolve(libName).toFilePath(windows: Platform.isWindows)).copy(libPath);
-
-      // delete the source code
-      await Directory(openSslDir.toFilePath(windows: Platform.isWindows)).delete(recursive: true);
-
-      // add the library to dart code assets
-      output.assets.code.add(
-        CodeAsset(
-          package: input.packageName,
-          name: 'src/third_party/openssl.g.dart',
-          linkMode: libName.linkMode,
-          file: outputDir.resolve(libName),
-        ),
+      print('openssl: compiling libcrypto from source for ${targetOS.name}-${architecture.name}');
+      await _compileFromSource(
+        input: input,
+        targetOS: targetOS,
+        architecture: architecture,
+        libName: libName,
+        iosSdk: iosSdk,
       );
     }
+
+    output.assets.code.add(
+      CodeAsset(
+        package: input.packageName,
+        name: 'src/third_party/openssl.g.dart',
+        linkMode: libName.linkMode,
+        file: outputDir.resolve(libName),
+      ),
+    );
   });
+}
+
+Future<void> _compileFromSource({
+  required BuildInput input,
+  required OS targetOS,
+  required Architecture architecture,
+  required String libName,
+  required IOSSdk? iosSdk,
+}) async {
+  final workDir = input.outputDirectory;
+  final outputDir = input.outputDirectoryShared;
+
+  await downloadAndExtract(sourceCodeUrl, '$openSslDirName.tar.gz', workDir, createFolderForExtraction: false);
+
+  final openSslDir = workDir.resolve('$openSslDirName/');
+  final configName = resolveConfigName(targetOS, architecture, iosSdk);
+  final configArgs = configureArgsFor(targetOS);
+
+  if (targetOS == OS.android) {
+    final ndkRoot = await resolveAndroidNdkRoot();
+    environment['ANDROID_NDK_ROOT'] = ndkRoot;
+    environment['ANDROID_NDK_HOME'] = ndkRoot;
+    final toolchainBin = resolveAndroidToolchainBinDir(ndkRoot);
+    final existingPath = Platform.environment['PATH'] ?? '';
+    final pathSeparator = Platform.isWindows ? ';' : ':';
+    environment['PATH'] = '$toolchainBin$pathSeparator$existingPath';
+  }
+
+  if (usesMsvcBuild(targetOS)) {
+    await _buildWithMsvc(
+      openSslDir: openSslDir,
+      configName: configName,
+      configArgs: configArgs,
+      workDir: workDir,
+      architecture: architecture,
+    );
+  } else if (usesUnixMakefileBuild(targetOS)) {
+    await _buildWithMake(openSslDir: openSslDir, configName: configName, configArgs: configArgs);
+  } else {
+    throw UnsupportedError('Unsupported target OS: ${targetOS.name}');
+  }
+
+  final libPath = outputDir.resolve(libName).toFilePath(windows: Platform.isWindows);
+  await File(openSslDir.resolve(libName).toFilePath(windows: Platform.isWindows)).copy(libPath);
+  await Directory(openSslDir.toFilePath(windows: Platform.isWindows)).delete(recursive: true);
+}
+
+Future<void> _buildWithMsvc({
+  required Uri openSslDir,
+  required String configName,
+  required List<String> configArgs,
+  required Uri workDir,
+  required Architecture architecture,
+}) async {
+  if (OS.current != OS.windows) {
+    throw UnsupportedError('MSVC OpenSSL build must run on a Windows host.');
+  }
+
+  final msvcEnv = await resolveWindowsBuildEnvironment(architecture);
+  final needDownloadPerl = !await isProgramInstalled('perl');
+  final needDownloadJom = !await isProgramInstalled('jom');
+  var perlProgram = 'perl';
+  var jomProgram = 'jom';
+
+  if (needDownloadPerl) {
+    final perlUrl = _isWindowsArm64Host ? perlDownloadUrlModern : perlDownloadUrlLegacy;
+    await downloadAndExtract(perlUrl, 'perl.zip', workDir);
+    perlProgram = workDir.resolve('./perl/perl/bin/perl.exe').toFilePath(windows: true);
+  }
+  if (!File(perlProgram).existsSync()) {
+    throw StateError('perl not found at $perlProgram after bootstrap');
+  }
+  print('openssl: using perl at $perlProgram');
+  if (needDownloadJom) {
+    await downloadAndExtract(jomDownloadUrl, 'jom.zip', workDir);
+    jomProgram = workDir.resolve('./jom/jom.exe').toFilePath(windows: true);
+  }
+
+  await runProcess(
+    perlProgram,
+    ['Configure', configName, ...configArgs, '/FS'],
+    workingDirectory: openSslDir,
+    extraEnvironment: msvcEnv,
+  );
+
+  await runProcess(
+    jomProgram,
+    ['-j', '${Platform.numberOfProcessors}'],
+    workingDirectory: openSslDir,
+    extraEnvironment: msvcEnv,
+  );
+
+  if (needDownloadPerl) {
+    await Directory(workDir.resolve('perl').toFilePath(windows: true)).delete(recursive: true);
+  }
+  if (needDownloadJom) {
+    await Directory(workDir.resolve('jom').toFilePath(windows: true)).delete(recursive: true);
+  }
+}
+
+Future<void> _buildWithMake({
+  required Uri openSslDir,
+  required String configName,
+  required List<String> configArgs,
+}) async {
+  if (!await isProgramInstalled('perl')) {
+    throw Exception('perl is not installed. Install perl to build OpenSSL from source.');
+  }
+
+  await runProcess('./Configure', [configName, ...configArgs], workingDirectory: openSslDir);
+  await runProcess('make', ['-j', '${Platform.numberOfProcessors}'], workingDirectory: openSslDir);
+}
+
+bool get _isWindowsArm64Host {
+  final arch = Platform.environment['PROCESSOR_ARCHITECTURE'] ?? '';
+  return Platform.isWindows && arch.toUpperCase().contains('ARM64');
 }
 
 extension on String {
@@ -149,54 +195,39 @@ extension on String {
   }
 }
 
-Future<bool> isProgramInstalled(String programName) async {
-  try {
-    await runProcess(programName, []);
-    return true;
-  } catch (e) {
-    return false;
-  }
-}
-
-String resolveConfigName(OS os, Architecture architecture, IOSSdk? iosSdk) {
-  final isIosSimulator = iosSdk == IOSSdk.iPhoneSimulator;
-  return switch ((os, architecture)) {
-    (OS.android, Architecture.arm) => 'android-arm',
-    (OS.android, Architecture.arm64) => 'android-arm64',
-    (OS.android, Architecture.ia32) => 'android-x86',
-    (OS.android, Architecture.x64) => 'android-x86_64',
-    (OS.android, Architecture.riscv64) => 'android-riscv64',
-
-    (OS.iOS, Architecture.arm) => 'ios-xcrun',
-    (OS.iOS, Architecture.arm64) => isIosSimulator ? 'iossimulator-arm64-xcrun' : 'ios64-xcrun',
-    (OS.iOS, Architecture.ia32) => 'iossimulator-i386-xcrun',
-    (OS.iOS, Architecture.x64) => 'iossimulator-x86_64-xcrun',
-
-    (OS.macOS, Architecture.arm64) => 'darwin64-arm64',
-    (OS.macOS, Architecture.x64) => 'darwin64-x86_64',
-    (OS.macOS, Architecture.ia32) => 'darwin-i386',
-
-    (OS.linux, Architecture.arm) => 'linux-armv4',
-    (OS.linux, Architecture.arm64) => 'linux-aarch64',
-    (OS.linux, Architecture.ia32) => 'linux-x86',
-    (OS.linux, Architecture.x64) => 'linux-x86_64',
-    (OS.linux, Architecture.riscv32) => 'linux32-riscv32',
-    (OS.linux, Architecture.riscv64) => 'linux64-riscv64',
-
-    (OS.windows, Architecture.arm) => 'VC-WIN32-ARM',
-    (OS.windows, Architecture.arm64) => 'VC-WIN64-ARM',
-    (OS.windows, Architecture.ia32) => 'VC-WIN32',
-    (OS.windows, Architecture.x64) => 'VC-WIN64A',
-
-    _ => throw UnsupportedError('Unsupported target combination: ${os.name}-${architecture.name}'),
-  };
-}
-
 Future<Map<String, String>> resolveWindowsBuildEnvironment(Architecture architecture) async {
-  final result = await runProcess('cmd.exe', [
-    '/c',
-    r'call C:\"Program Files"\"Microsoft Visual Studio"\2022\Community\VC\Auxiliary\Build\vcvars64.bat >nul && set',
-  ]);
+  final installationPath = await _findVisualStudioInstallPath();
+  final vcvarsNames = switch (architecture) {
+    Architecture.arm64 => ['vcvarsamd64_arm64.bat', 'vcvarsarm64.bat', 'vcvars64.bat'],
+    Architecture.ia32 => ['vcvars32.bat', 'vcvars64.bat'],
+    _ => ['vcvars64.bat'],
+  };
+  String? vcvarsPath;
+  for (final name in vcvarsNames) {
+    final candidate = '$installationPath\\VC\\Auxiliary\\Build\\$name';
+    if (File(candidate).existsSync()) {
+      vcvarsPath = candidate;
+      break;
+    }
+  }
+  if (vcvarsPath == null) {
+    throw StateError('Visual Studio vcvars script not found under $installationPath');
+  }
+
+  final processResult = await Process.run(
+    'cmd.exe',
+    ['/c', 'call', vcvarsPath, '>nul', '&&', 'set'],
+    includeParentEnvironment: true,
+  );
+  if (processResult.exitCode != 0) {
+    throw ProcessException(
+      'cmd.exe',
+      ['/c', 'call', vcvarsPath, '>nul', '&&', 'set'],
+      processResult.stderr,
+      processResult.exitCode,
+    );
+  }
+  final result = processResult.stdout as String;
 
   return Map.fromEntries(
     result.trim().split('\n').map((line) {
@@ -207,6 +238,54 @@ Future<Map<String, String>> resolveWindowsBuildEnvironment(Architecture architec
       return MapEntry(parts[0].trim(), parts[1].trim());
     }).nonNulls,
   );
+}
+
+Future<String> _findVisualStudioInstallPath() async {
+  final programFilesX86 = Platform.environment['ProgramFiles(x86)'] ?? r'C:\Program Files (x86)';
+  final vswhere = '$programFilesX86\\Microsoft Visual Studio\\Installer\\vswhere.exe';
+  if (File(vswhere).existsSync()) {
+    final result = await Process.run(vswhere, [
+      '-latest',
+      '-products',
+      '*',
+      '-requires',
+      'Microsoft.VisualStudio.Component.VC.Tools.x86.x64',
+      '-property',
+      'installationPath',
+    ]);
+    if (result.exitCode == 0) {
+      final path = (result.stdout as String).trim();
+      if (path.isNotEmpty && Directory(path).existsSync()) {
+        return path;
+      }
+    }
+  }
+
+  const fallbacks = [
+    r'C:\Program Files\Microsoft Visual Studio\18\Community',
+    r'C:\Program Files\Microsoft Visual Studio\2022\Community',
+    r'C:\Program Files\Microsoft Visual Studio\2022\Professional',
+    r'C:\Program Files\Microsoft Visual Studio\2022\Enterprise',
+    r'C:\Program Files\Microsoft Visual Studio\2022\BuildTools',
+  ];
+  for (final path in fallbacks) {
+    if (Directory(path).existsSync()) {
+      return path;
+    }
+  }
+
+  throw StateError(
+    'Visual Studio 2022 with C++ tools not found. Install MSVC or set up vswhere.',
+  );
+}
+
+Future<bool> isProgramInstalled(String programName) async {
+  try {
+    await runProcess(programName, []);
+    return true;
+  } catch (_) {
+    return false;
+  }
 }
 
 Future<String> runProcess(
@@ -227,7 +306,10 @@ Future<String> runProcess(
     print(processResult.stderr);
   }
   if (processResult.exitCode != 0) {
-    throw ProcessException(executable, arguments, processResult.stderr, processResult.exitCode);
+    final message = StringBuffer()
+      ..writeln(processResult.stdout)
+      ..writeln(processResult.stderr);
+    throw ProcessException(executable, arguments, message.toString(), processResult.exitCode);
   }
   return processResult.stdout.toString();
 }
@@ -238,10 +320,8 @@ Future<void> downloadAndExtract(
   Uri workDir, {
   bool createFolderForExtraction = true,
 }) async {
-  // download the file
   await runProcess('curl', ['-L', url, '-o', outputFileName], workingDirectory: workDir);
 
-  // unzip the file
   final isTarGz = outputFileName.endsWith('.tar.gz');
   final destinationPath = workDir.resolve(outputFileName.replaceAll('.tar.gz', '').replaceAll('.zip', ''));
   await Directory(destinationPath.toFilePath(windows: Platform.isWindows)).create(recursive: true);
@@ -251,6 +331,5 @@ Future<void> downloadAndExtract(
     if (createFolderForExtraction) ...['-C', destinationPath.toFilePath(windows: Platform.isWindows)],
   ], workingDirectory: workDir);
 
-  // remove the tar.gz file
   await File(workDir.resolve(outputFileName).toFilePath(windows: Platform.isWindows)).delete();
 }

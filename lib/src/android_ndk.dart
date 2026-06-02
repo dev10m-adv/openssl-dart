@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:logging/logging.dart';
 import 'package:native_toolchain_c/src/native_toolchain/android_ndk.dart' as ntc_ndk;
 import 'package:native_toolchain_c/src/tool/tool_instance.dart';
+import 'package:native_toolchain_c/src/tool/tool_resolver.dart';
 
 /// Resolve the Android NDK root, picking the latest installed version.
 /// Uses the native_toolchain_cmake resolver first, then falls back to a local scan.
@@ -10,7 +11,9 @@ Future<String> resolveAndroidNdkRoot() async {
   try {
     final resolver = ntc_ndk.androidNdk.defaultResolver;
     if (resolver != null) {
-      final instances = await resolver.resolve(logger: Logger.detached('android_ndk'));
+      final instances = await resolver.resolve(
+        ToolResolvingContext(logger: Logger.detached('android_ndk')),
+      );
       final ndkInstance = _pickNdkInstance(instances);
       final ndkPath = Directory.fromUri(ndkInstance.uri).path;
       if (await Directory(ndkPath).exists()) {

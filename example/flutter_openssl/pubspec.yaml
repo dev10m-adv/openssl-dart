@@ -1,0 +1,21 @@
+name: flutter_openssl_example
+description: Minimal Flutter app using the openssl package (libcrypto FFI).
+publish_to: none
+
+environment:
+  sdk: ^3.10.1
+  flutter: ">=3.38.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  openssl:
+    path: ../../
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

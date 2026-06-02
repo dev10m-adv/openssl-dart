@@ -1,0 +1,52 @@
+name: Prebuilts
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  build-prebuilts:
+    name: ${{ matrix.os }}-${{ matrix.arch }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            arch: x64
+          - os: macos-latest
+            arch: arm64
+          - os: windows-latest
+            arch: x64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
+      - name: Install Linux build deps
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y perl make curl
+
+      - name: Build libcrypto via tests
+        run: dart pub get && dart test
+
+      - name: Collect prebuilt artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          TRIPLE="3.5.4/$(uname -s | tr '[:upper:]' '[:lower:]' | sed 's/darwin/macos/')-x64-static"
+          mkdir -p "prebuilt/${TRIPLE}"
+          LIB=$(find .dart_tool/hooks_runner/openssl -name 'libcrypto.a' -o -name 'libcrypto_static.lib' -o -name 'libcrypto*.dll' | head -1)
+          if [ -z "$LIB" ]; then echo "libcrypto not found"; exit 1; fi
+          cp "$LIB" "prebuilt/${TRIPLE}/$(basename "$LIB")"
+          echo "Copied to prebuilt/${TRIPLE}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prebuilt-${{ matrix.os }}
+          path: prebuilt/
