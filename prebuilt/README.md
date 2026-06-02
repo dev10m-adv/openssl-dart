@@ -8,6 +8,7 @@ prebuilt/<version>/<os>-<arch>[-<iosSdk>]-<static|dynamic>/<libcrypto file>
 
 Examples:
 
+- `prebuilt/3.5.4/windows-arm64-dynamic/libcrypto-3-arm64.dll` (~6.9 MB, built on Windows ARM64)
 - `prebuilt/3.5.4/windows-x64-static/libcrypto_static.lib`
 - `prebuilt/3.5.4/linux-x64-static/libcrypto.a`
 - `prebuilt/3.5.4/android-arm64-static/libcrypto.a`
