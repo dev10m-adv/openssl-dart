@@ -1,0 +1,44 @@
+name: Regenerate FFI bindings
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - native/third_party/openssl/**
+      - tool/ffigen.dart
+      - tool/libcrypto_headers.dart
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  ffigen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
+      - name: Regenerate bindings
+        run: |
+          dart pub get
+          dart run tool/ffigen.dart
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ci/ffigen-${{ github.run_id }}
+          delete-branch: true
+          commit-message: Regenerate openssl.g.dart from vendor headers
+          title: "ci: regenerate FFI bindings"
+          body: |
+            Automated binding refresh after OpenSSL header / ffigen input changes.
+          add-paths: |
+            lib/src/third_party/openssl.g.dart

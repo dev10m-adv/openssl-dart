@@ -1,19 +1,20 @@
 import 'dart:io';
 
-/// Prints instructions for populating [prebuilt/] on the current host (Git LFS).
-///
-/// Full automation requires running a Flutter/Dart app build per target triple
-/// so the openssl hook compiles and copies output into [prebuilt/].
-void main() {
-  stdout.writeln('Prebuilt layout: prebuilt/$openSslVersion/<triple>/<libcrypto>');
-  stdout.writeln('');
-  stdout.writeln('On this host (${Platform.operatingSystem}), build the package tests to produce libcrypto:');
-  stdout.writeln('  dart test');
-  stdout.writeln('');
-  stdout.writeln('Then copy the native asset from .dart_tool/hooks_runner/ into prebuilt/<triple>/.');
-  stdout.writeln('Run `dart run tool/verify_prebuilts.dart` then commit (`git lfs` uploads on push).');
-  stdout.writeln('CI: .github/workflows/prebuilts.yml (workflow_dispatch or release).');
-  stdout.writeln('Note: prebuilt/ is not published to pub.dev (see .pubignore).');
-}
+import 'package:openssl/src/native_version.dart';
+import 'package:openssl/src/prebuilt_paths.dart';
 
-const openSslVersion = '3.5.4';
+/// Prints how to populate [native/prebuilt/] on the current host.
+void main() {
+  final packageRoot = Directory.current.uri;
+  final version = readOpenSslVersion(packageRoot);
+  stdout.writeln('Prebuilt layout: $prebuiltRoot/$version/<platform-dir>/libcrypto.*');
+  stdout.writeln('Required triples: ${requiredPrebuiltTriples.join(', ')}');
+  stdout.writeln('');
+  stdout.writeln('Build one triple (example):');
+  stdout.writeln('  TRIPLE=linux-x64 bash native/build/linux.sh');
+  stdout.writeln('  pwsh native/build/windows.ps1 -Triple windows-arm64');
+  stdout.writeln('');
+  stdout.writeln('Then: dart run tool/verify_prebuilts.dart');
+  stdout.writeln('Hash:  dart run tool/compute_build_hash.dart');
+  stdout.writeln('CI:    .github/workflows/prebuilts.yml');
+}

@@ -7,6 +7,75 @@ on:
     branches: [main, master]
 
 jobs:
+  changes:
+    name: detect-changes
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      prebuilt: ${{ steps.filter.outputs.prebuilt }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            prebuilt:
+              - 'native/prebuilt/**'
+              - 'native/src/VERSION'
+              - 'native/prebuilt/manifest.json'
+
+  verify-prebuilts-strict:
+    name: verify-prebuilts-strict
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.prebuilt == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          lfs: true
+
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
+      - name: Repo health (strict)
+        run: dart run tool/check_repo.dart
+
+  lfs-smoke:
+    name: lfs-pointer-smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
+      - name: Check LFS smudged files
+        run: dart run tool/check_lfs_pointers.dart
+
+  repo-health:
+    name: repo-health
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          lfs: true
+
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
+      - name: Manifest and submodule
+        run: |
+          dart run tool/sync_manifest.dart --check
+          dart run tool/check_submodule.dart
+
   analyze-and-test:
     name: ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
@@ -28,9 +97,8 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y perl make curl
 
-      - name: Verify prebuilts (LFS smudged)
-        run: dart run tool/verify_prebuilts.dart
-        continue-on-error: true
+      - name: Verify prebuilts (partial ok on PRs without full matrix)
+        run: dart run tool/verify_prebuilts.dart --allow-partial
 
       - name: pub get
         run: dart pub get
@@ -53,6 +121,10 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
 
       - name: Install build deps
         run: sudo apt-get update && sudo apt-get install -y perl make curl

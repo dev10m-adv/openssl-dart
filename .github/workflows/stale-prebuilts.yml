@@ -1,0 +1,65 @@
+name: Stale prebuilt cleanup
+
+on:
+  schedule:
+    - cron: "0 9 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  propose-cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Find stale version directories
+        id: stale
+        run: |
+          set -euo pipefail
+          ACTIVE="$(tr -d '\r\n' < native/src/VERSION)"
+          STALE=""
+          for dir in native/prebuilt/*/; do
+            [ -d "$dir" ] || continue
+            ver="$(basename "$dir")"
+            if [ "$ver" = "$ACTIVE" ]; then continue; fi
+            if [ -f "$dir/.build-hash" ] || ls "$dir"/*/libcrypto* 1>/dev/null 2>&1; then
+              STALE="${STALE}${ver} "
+            fi
+          done
+          echo "active=$ACTIVE" >> "$GITHUB_OUTPUT"
+          echo "stale=$STALE" >> "$GITHUB_OUTPUT"
+          if [ -z "$STALE" ]; then
+            echo "nothing_stale=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "nothing_stale=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Remove stale directories
+        if: steps.stale.outputs.nothing_stale == 'false'
+        run: |
+          ACTIVE="${{ steps.stale.outputs.active }}"
+          for ver in ${{ steps.stale.outputs.stale }}; do
+            [ -z "$ver" ] && continue
+            echo "Removing native/prebuilt/$ver"
+            git rm -rf "native/prebuilt/$ver" || rm -rf "native/prebuilt/$ver"
+          done
+
+      - name: Create Pull Request
+        if: steps.stale.outputs.nothing_stale == 'false'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ci/remove-stale-prebuilts-${{ github.run_id }}
+          delete-branch: true
+          commit-message: Remove stale prebuilt OpenSSL versions (keep ${{ steps.stale.outputs.active }})
+          title: "ci: remove stale prebuilt versions"
+          body: |
+            Removes prebuilt trees older than active version `${{ steps.stale.outputs.active }}`.
+            Stale: ${{ steps.stale.outputs.stale }}
+          add-paths: |
+            native/prebuilt/

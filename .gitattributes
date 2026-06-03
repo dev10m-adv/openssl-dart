@@ -1,1 +1,4 @@
-prebuilt/** filter=lfs diff=lfs merge=lfs -text
+native/prebuilt/** filter=lfs diff=lfs merge=lfs -text
+native/prebuilt/**/.build-hash -text
+native/prebuilt/**/README.md -text
+native/prebuilt/manifest.json -text

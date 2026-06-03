@@ -44,6 +44,7 @@ void main() {
 
 Uri _resolveIncludeRoot(Uri packageRoot) {
   final candidates = [
+    packageRoot.resolve('native/third_party/openssl/include/'),
     packageRoot.resolve('openssl_repo/include/'),
     packageRoot.resolve('openssl-3.5.4/include/'),
   ];

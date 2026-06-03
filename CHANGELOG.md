@@ -1,7 +1,25 @@
+## 1.2.2
+
+- Repo maintenance: strict prebuilt verify on PRs touching LFS paths, bot PRs for prebuilts/ffigen, Dependabot, LFS smoke, OpenSSL release checker, matrix health, stale prebuilt cleanup, release workflow.
+- Tools: `sync_manifest.dart`, `check_submodule.dart`, `check_lfs_pointers.dart`, `check_repo.dart`; `verify_prebuilts --allow-partial`.
+- Linux arm64 cross-compile in `native/build/linux.sh`.
+
+## 1.2.1
+
+- Version-first prebuilt layout: `native/prebuilt/<version>/<platform>/` with per-version `.build-hash`.
+- Single OpenSSL pin: [`native/src/VERSION`](native/src/VERSION) drives Dart, scripts, and [`manifest.json`](native/prebuilt/manifest.json).
+
+## 1.2.0
+
+- Restructure native builds under `native/` (`build/`, `third_party/openssl`, `out/`, `prebuilt/`).
+- Platform-centric prebuilt dirs (`linux-x64`, `windows-arm64`, `ios-xcframework`, etc.); dynamic-only LFS artifacts.
+- Hash-gated prebuilts CI (`native/prebuilt/.build-hash`, `tool/compute_build_hash.dart`); skip matrix when inputs unchanged.
+- iOS xcframework and macOS universal prebuilt resolution in the hook.
+
 ## 1.1.1
 
 - Canonical git repository: [advforks/openssl-dart](https://github.com/advforks/openssl-dart) (non-fork; supports Git LFS prebuilts). The former `advforks/openssl_dart` fork remains read-only on GitHub.
-- Track `prebuilt/` with Git LFS; exclude prebuilts from pub.dev (`.pubignore`).
+- Track prebuilts with Git LFS; exclude from pub.dev (`.pubignore`).
 - Hook ignores LFS pointer stubs; add `dart run tool/verify_prebuilts.dart`.
 - Expand prebuilts CI matrix (Linux, macOS, Windows x64/ARM64).
 

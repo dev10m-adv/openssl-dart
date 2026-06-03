@@ -1,33 +1,35 @@
 name: Prebuilts
 
 on:
-  release:
-    types: [published]
+  push:
+    branches: [master, main]
+    paths:
+      - native/**
+      - hook/**
+      - lib/src/build_target.dart
+      - lib/src/native_version.dart
+      - lib/src/prebuilt_paths.dart
+      - tool/compute_build_hash.dart
+      - tool/verify_prebuilts.dart
+      - tool/sync_manifest.dart
+      - tool/check_repo.dart
   workflow_dispatch:
+
+concurrency:
+  group: prebuilts-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
-  build-prebuilts:
-    name: build-${{ matrix.artifact }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            artifact: linux-x64-dynamic
-            triple: 3.5.4/linux-x64-dynamic
-          - os: macos-latest
-            artifact: macos-arm64-dynamic
-            triple: 3.5.4/macos-arm64-dynamic
-          - os: windows-latest
-            artifact: windows-x64-dynamic
-            triple: 3.5.4/windows-x64-dynamic
-          - os: windows-11-arm
-            artifact: windows-arm64-dynamic
-            triple: 3.5.4/windows-arm64-dynamic
+  check-hash:
+    name: check-build-hash
+    runs-on: ubuntu-latest
+    outputs:
+      should_build: ${{ steps.compare.outputs.should_build }}
+      openssl_version: ${{ steps.version.outputs.openssl_version }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -38,87 +40,201 @@ jobs:
         with:
           sdk: stable
 
-      - name: Install Linux build deps
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y perl make curl
+      - name: Read OpenSSL version
+        id: version
+        run: echo "openssl_version=$(tr -d '\r\n' < native/src/VERSION)" >> "$GITHUB_OUTPUT"
 
-      - name: Build libcrypto via tests
-        run: dart pub get && dart test
+      - name: Sync manifest and validate submodule
+        run: |
+          dart run tool/sync_manifest.dart --check
+          dart run tool/check_submodule.dart
 
-      - name: Collect prebuilt artifact
-        shell: bash
+      - name: Compute build hash
+        run: dart run tool/compute_build_hash.dart /tmp/computed-hash.txt
+
+      - name: Compare hash and verify prebuilts
+        id: compare
+        env:
+          OPENSSL_VERSION: ${{ steps.version.outputs.openssl_version }}
         run: |
           set -euo pipefail
-          mkdir -p "prebuilt/${{ matrix.triple }}"
-          LIB=$(find .dart_tool/hooks_runner -type f \( \
-            -name 'libcrypto.a' -o -name 'libcrypto.so' -o -name 'libcrypto.dylib' -o \
-            -name 'libcrypto_static.lib' -o -name 'libcrypto*.dll' \) | head -1)
-          if [ -z "$LIB" ]; then
-            echo "libcrypto artifact not found under .dart_tool/hooks_runner"
-            exit 1
+          COMPUTED="$(cat /tmp/computed-hash.txt)"
+          HASH_FILE="native/prebuilt/${OPENSSL_VERSION}/.build-hash"
+          STORED="missing"
+          if [ -f "$HASH_FILE" ]; then
+            STORED="$(tr -d '\r\n' < "$HASH_FILE")"
           fi
-          cp "$LIB" "prebuilt/${{ matrix.triple }}/$(basename "$LIB")"
-          ls -la "prebuilt/${{ matrix.triple }}"
+          echo "computed=$COMPUTED"
+          echo "stored=$STORED"
+          echo "## Prebuilts hash" >> "$GITHUB_STEP_SUMMARY"
+          echo "| | |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| computed | \`$COMPUTED\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| stored | \`$STORED\` |" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$COMPUTED" = "$STORED" ]; then
+            if dart run tool/verify_prebuilts.dart; then
+              echo "should_build=false" >> "$GITHUB_OUTPUT"
+              echo "Prebuilts up to date; skipping matrix." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            echo "Hash matches but prebuilts incomplete; rebuilding." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "should_build=true" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: prebuilt-${{ matrix.artifact }}
-          path: prebuilt/${{ matrix.triple }}/
-
-  merge-and-push:
-    name: merge-prebuilts
-    needs: build-prebuilts
-    runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'release'
+  build-prebuilts:
+    name: build-${{ matrix.triple }}
+    needs: check-hash
+    if: needs.check-hash.outputs.should_build == 'true'
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.optional == true }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            triple: linux-x64
+            script: native/build/linux.sh
+            optional: false
+          - os: ubuntu-latest
+            triple: linux-arm64
+            script: native/build/linux.sh
+            optional: false
+          - os: macos-latest
+            triple: macos-universal
+            script: native/build/macos.sh
+            optional: false
+          - os: macos-latest
+            triple: ios-xcframework
+            script: native/build/macos.sh
+            optional: false
+          - os: ubuntu-latest
+            triple: android-arm64-v8a
+            script: native/build/android.sh
+            optional: false
+          - os: ubuntu-latest
+            triple: android-x86_64
+            script: native/build/android.sh
+            optional: false
+          - os: windows-latest
+            triple: windows-x64
+            script: native/build/windows.ps1
+            optional: false
+          - os: windows-11-arm
+            triple: windows-arm64
+            script: native/build/windows.ps1
+            optional: true
     steps:
       - uses: actions/checkout@v4
         with:
+          submodules: recursive
           lfs: true
 
-      - name: Download all prebuilt artifacts
-        uses: actions/download-artifact@v4
+      - name: Read OpenSSL version
+        id: version
+        run: echo "openssl_version=$(tr -d '\r\n' < native/src/VERSION)" >> "$GITHUB_OUTPUT"
+
+      - name: Install Linux build deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y perl make curl
+          if [ "${{ matrix.triple }}" = "linux-arm64" ] && [ "$(uname -m)" != "aarch64" ]; then
+            sudo apt-get install -y gcc-aarch64-linux-gnu
+          fi
+
+      - name: Setup Android NDK
+        if: startsWith(matrix.triple, 'android-')
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r27c
+
+      - name: Install Windows build tools
+        if: runner.os == 'Windows'
+        run: choco install strawberryperl jom -y
+
+      - name: Build prebuilt
+        shell: bash
+        env:
+          TRIPLE: ${{ matrix.triple }}
+          ANDROID_NDK_ROOT: ${{ env.ANDROID_NDK_ROOT }}
+        run: |
+          set -euo pipefail
+          if [[ "${{ matrix.script }}" == *.ps1 ]]; then
+            pwsh -File "${{ matrix.script }}" -Triple "${TRIPLE}"
+          else
+            chmod +x native/build/*.sh
+            bash "${{ matrix.script }}"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: prebuilt-${{ matrix.triple }}
+          path: native/prebuilt/${{ steps.version.outputs.openssl_version }}/${{ matrix.triple }}/
+          if-no-files-found: error
+          overwrite: true
+
+  merge-commit:
+    name: merge-prebuilts
+    needs: [check-hash, build-prebuilts]
+    if: needs.check-hash.outputs.should_build == 'true' && needs.build-prebuilts.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          lfs: true
+
+      - name: Read OpenSSL version
+        id: version
+        run: echo "openssl_version=$(tr -d '\r\n' < native/src/VERSION)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/download-artifact@v4
         with:
           pattern: prebuilt-*
           path: artifacts
           merge-multiple: false
 
-      - name: Install Git LFS
-        run: |
-          git lfs install
-          git lfs pull
-
-      - name: Merge into prebuilt/
+      - name: Merge artifacts into native/prebuilt
+        env:
+          OPENSSL_VERSION: ${{ steps.version.outputs.openssl_version }}
         run: |
           set -euo pipefail
-          declare -A MAP=(
-            [linux-x64-dynamic]=3.5.4/linux-x64-dynamic
-            [macos-arm64-dynamic]=3.5.4/macos-arm64-dynamic
-            [windows-x64-dynamic]=3.5.4/windows-x64-dynamic
-            [windows-arm64-dynamic]=3.5.4/windows-arm64-dynamic
-          )
-          for artifact_dir in artifacts/prebuilt-*; do
-            key="${artifact_dir##*/}"
-            key="${key#prebuilt-}"
-            triple="${MAP[$key]}"
-            if [ -z "$triple" ]; then echo "Unknown artifact $key"; exit 1; fi
-            mkdir -p "prebuilt/$triple"
-            cp -v "$artifact_dir"/* "prebuilt/$triple/"
+          for dir in artifacts/prebuilt-*; do
+            triple="${dir##*/}"
+            triple="${triple#prebuilt-}"
+            if [ ! -d "$dir" ] || [ -z "$(ls -A "$dir" 2>/dev/null)" ]; then
+              echo "Skip empty artifact $triple"
+              continue
+            fi
+            mkdir -p "native/prebuilt/${OPENSSL_VERSION}/${triple}"
+            cp -rv "$dir"/* "native/prebuilt/${OPENSSL_VERSION}/${triple}/"
           done
-          find prebuilt -type f ! -name '*.md' -exec ls -la {} \;
+          find "native/prebuilt/${OPENSSL_VERSION}" -type f ! -name '.build-hash' -exec ls -la {} \;
 
       - uses: dart-lang/setup-dart@v1
         with:
           sdk: stable
 
-      - name: Verify prebuilts are not LFS pointers
+      - name: Sync manifest and update hash
+        run: |
+          dart run tool/sync_manifest.dart
+          dart run tool/compute_build_hash.dart
+          cat "native/prebuilt/$(tr -d '\r\n' < native/src/VERSION)/.build-hash"
+
+      - name: Verify prebuilts
         run: dart run tool/verify_prebuilts.dart
 
-      - name: Commit and push
-        if: github.event_name == 'workflow_dispatch'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add prebuilt/
-          git diff --staged --quiet && echo "No prebuilt changes" && exit 0
-          git commit -m "Update prebuilt libcrypto matrix from CI"
-          git push
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ci/prebuilts-${{ steps.version.outputs.openssl_version }}-${{ github.run_id }}
+          delete-branch: true
+          commit-message: Update native prebuilt libcrypto matrix (OpenSSL ${{ steps.version.outputs.openssl_version }})
+          title: "ci: update prebuilt libcrypto (OpenSSL ${{ steps.version.outputs.openssl_version }})"
+          body: |
+            Automated prebuilts update from workflow run ${{ github.run_id }}.
+            - Version: `${{ steps.version.outputs.openssl_version }}`
+            - Review LFS file sizes before merge.
+          add-paths: |
+            native/prebuilt/

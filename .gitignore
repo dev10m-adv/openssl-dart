@@ -13,3 +13,7 @@ pubspec.lock
 # Local OpenSSL source extracts
 openssl-3.5.4/
 .dart_tool/openssl-3.5.4.tar.gz
+
+# Native CI / hook build output (not committed)
+native/out/
+openssl_repo/

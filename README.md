@@ -3,7 +3,7 @@
 [![pub.dev](https://img.shields.io/pub/v/openssl.svg)](https://pub.dev/packages/openssl)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-**Git (with prebuilts):** clone [github.com/advforks/openssl-dart](https://github.com/advforks/openssl-dart) and run `git lfs pull` (see [`prebuilt/README.md`](prebuilt/README.md)).
+**Git (with prebuilts):** clone [github.com/advforks/openssl-dart](https://github.com/advforks/openssl-dart) and run `git lfs pull` (see [`native/prebuilt/README.md`](native/prebuilt/README.md)).
 
 This package ships **OpenSSL 3.5.4 libcrypto** (no libssl/TLS) for Dart and Flutter via FFI and Native Assets. Bindings mirror the libcrypto C API; you manage memory and lifetimes using the [OpenSSL documentation](https://docs.openssl.org/).
 
@@ -55,15 +55,13 @@ See [`example/main.dart`](example/main.dart) for AES-256-CBC. Follow OpenSSL doc
 
 ## Prebuilt binaries (git clones only)
 
-Shipped under [`prebuilt/`](prebuilt/README.md) via **Git LFS** when you clone this repository (`git lfs pull`). They are **not** included on pub.dev (smaller package; first run compiles from source).
-
-Layout when available:
+Shipped under [`native/prebuilt/`](native/prebuilt/README.md) via **Git LFS** (`git lfs pull`). Not included on pub.dev. CI skips rebuilds when `native/prebuilt/<version>/.build-hash` matches native build inputs (version from [`native/src/VERSION`](native/src/VERSION)).
 
 ```
-prebuilt/3.5.4/<os>-<arch>[-<iosSdk>]-<static|dynamic>/libcrypto.*
+native/prebuilt/3.5.4/<platform-dir>/libcrypto.*
 ```
 
-Missing triples fall back to compiling OpenSSL from source. Populate prebuilts with CI or `dart run tool/build_prebuilts.dart` (see [`contrib.md`](contrib.md)).
+Examples: `windows-arm64/`, `linux-x64/`, `ios-xcframework/`. Missing triples compile from source. See [`contrib.md`](contrib.md) and `dart run tool/build_prebuilts.dart`.
 
 ## Toolchain matrix (compile from source)
 

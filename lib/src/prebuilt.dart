@@ -2,9 +2,9 @@ import 'dart:io';
 
 import 'package:code_assets/code_assets.dart';
 
-import 'build_target.dart';
+import 'prebuilt_paths.dart';
 
-/// Returns a prebuilt [libcrypto] file for this target, if shipped under [prebuilt/].
+/// Returns a prebuilt [libcrypto] file for this target, if shipped under [native/prebuilt/].
 File? findPrebuiltLibcrypto({
   required Uri packageRoot,
   required OS targetOS,
@@ -12,18 +12,16 @@ File? findPrebuiltLibcrypto({
   required LinkModePreference linkMode,
   IOSSdk? iosSdk,
 }) {
-  final key = prebuiltTripleKey(
+  final candidate = resolvePrebuiltArtifact(
+    packageRoot: packageRoot,
     targetOS: targetOS,
     architecture: architecture,
     linkMode: linkMode,
     iosSdk: iosSdk,
   );
-  final libName = resolveLibFileName(targetOS, architecture, linkMode);
-  final candidate = File.fromUri(packageRoot.resolve('prebuilt/$key/$libName'));
-  if (!candidate.existsSync()) {
+  if (candidate == null) {
     return null;
   }
-  // Git LFS pointer files are tiny; treat as missing so the hook compiles instead.
   if (candidate.lengthSync() < 4096) {
     print(
       'openssl: ignoring prebuilt at ${candidate.path} (${candidate.lengthSync()} bytes); '

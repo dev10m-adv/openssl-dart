@@ -1,6 +1,6 @@
 import 'package:code_assets/code_assets.dart';
 
-const openSslVersion = '3.5.4';
+export 'native_version.dart' show openSslVersion, readOpenSslVersion;
 
 /// OpenSSL Configure target for the given code asset target.
 String resolveConfigName(OS os, Architecture architecture, IOSSdk? iosSdk) {
@@ -46,20 +46,6 @@ String resolveLibFileName(OS os, Architecture architecture, LinkModePreference l
   };
 }
 
-/// Key for [prebuilt/] lookup, e.g. `3.5.4/android-arm64-static`.
-String prebuiltTripleKey({
-  required OS targetOS,
-  required Architecture architecture,
-  required LinkModePreference linkMode,
-  IOSSdk? iosSdk,
-}) {
-  final link = linkMode == LinkModePreference.static || linkMode == LinkModePreference.preferStatic
-      ? 'static'
-      : 'dynamic';
-  final iosSuffix = targetOS == OS.iOS ? '-${iosSdk?.type ?? 'iphoneos'}' : '';
-  return '$openSslVersion/${targetOS.name}-${architecture.name}$iosSuffix-$link';
-}
-
 bool usesUnixMakefileBuild(OS targetOS) =>
     targetOS == OS.android || targetOS == OS.iOS || targetOS == OS.linux || targetOS == OS.macOS;
 
@@ -76,11 +62,11 @@ String? compileHostRequirement(OS hostOS, OS targetOS) {
   if (canCompileOnHost(hostOS, targetOS)) return null;
   if (targetOS == OS.android || targetOS == OS.iOS) {
     return 'Building OpenSSL for ${targetOS.name} requires a macOS or Linux host, '
-        'or use a prebuilt library under prebuilt/.';
+        'or use a prebuilt library under native/prebuilt/.';
   }
   if (targetOS == OS.linux && hostOS == OS.windows) {
     return 'Building OpenSSL for Linux on a Windows host is not supported. '
-        'Use a prebuilt library under prebuilt/.';
+        'Use a prebuilt library under native/prebuilt/.';
   }
   if (targetOS == OS.macOS && hostOS != OS.macOS) {
     return 'Building OpenSSL for macOS requires a macOS host, or use a prebuilt library.';

@@ -1,7 +1,7 @@
-openssl_repo
+native/third_party/openssl
 .vscode
 tool
 
-# Prebuilts are stored in Git LFS for git clones only (see prebuilt/README.md).
+# Prebuilts are stored in Git LFS for git clones only (see native/prebuilt/README.md).
 # pub.dev consumers compile libcrypto via the build hook on first run.
-prebuilt/
+native/prebuilt/

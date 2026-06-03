@@ -5,11 +5,10 @@ import 'package:hooks/hooks.dart';
 
 import '../lib/src/android_ndk.dart';
 import '../lib/src/build_target.dart';
+import '../lib/src/openssl_source.dart';
 import '../lib/src/prebuilt.dart';
+import '../lib/src/prebuilt_paths.dart';
 
-const sourceCodeUrl =
-    'https://github.com/openssl/openssl/releases/download/openssl-$openSslVersion/openssl-$openSslVersion.tar.gz';
-const openSslDirName = 'openssl-$openSslVersion';
 const perlDownloadUrlLegacy =
     'https://strawberryperl.com/download/5.14.2.1/strawberry-perl-5.14.2.1-64bit-portable.zip';
 const perlDownloadUrlModern =
@@ -40,9 +39,11 @@ void main(List<String> args) async {
       iosSdk: iosSdk,
     );
 
+    late final String outputLibName;
     if (prebuilt != null) {
       print('openssl: using prebuilt ${prebuilt.path}');
-      final dest = outputDir.resolve(libName).toFilePath(windows: Platform.isWindows);
+      outputLibName = prebuilt.uri.pathSegments.last;
+      final dest = outputDir.resolve(outputLibName).toFilePath(windows: Platform.isWindows);
       await prebuilt.copy(dest);
     } else {
       final hostRequirement = compileHostRequirement(OS.current, targetOS);
@@ -50,8 +51,10 @@ void main(List<String> args) async {
         throw UnsupportedError(hostRequirement);
       }
       print('openssl: compiling libcrypto from source for ${targetOS.name}-${architecture.name}');
-      await _compileFromSource(
-        input: input,
+      outputLibName = await _compileFromSource(
+        packageRoot: packageRoot,
+        workDir: nativeOutUri(packageRoot, 'hook-build'),
+        outputDir: outputDir,
         targetOS: targetOS,
         architecture: architecture,
         libName: libName,
@@ -63,26 +66,30 @@ void main(List<String> args) async {
       CodeAsset(
         package: input.packageName,
         name: 'src/third_party/openssl.g.dart',
-        linkMode: libName.linkMode,
-        file: outputDir.resolve(libName),
+        linkMode: outputLibName.linkMode,
+        file: outputDir.resolve(outputLibName),
       ),
     );
   });
 }
 
-Future<void> _compileFromSource({
-  required BuildInput input,
+Future<String> _compileFromSource({
+  required Uri packageRoot,
+  required Uri workDir,
+  required Uri outputDir,
   required OS targetOS,
   required Architecture architecture,
   required String libName,
   required IOSSdk? iosSdk,
 }) async {
-  final workDir = input.outputDirectory;
-  final outputDir = input.outputDirectoryShared;
+  Directory.fromUri(workDir).createSync(recursive: true);
 
-  await downloadAndExtract(sourceCodeUrl, '$openSslDirName.tar.gz', workDir, createFolderForExtraction: false);
+  final openSslDir = await ensureOpenSslSource(
+    packageRoot: packageRoot,
+    workDir: workDir,
+    runProcess: _runProcess,
+  );
 
-  final openSslDir = workDir.resolve('$openSslDirName/');
   final configName = resolveConfigName(targetOS, architecture, iosSdk);
   final configArgs = configureArgsFor(targetOS);
 
@@ -98,21 +105,45 @@ Future<void> _compileFromSource({
 
   if (usesMsvcBuild(targetOS)) {
     await _buildWithMsvc(
-      openSslDir: openSslDir,
+      openSslDir: Uri.directory(openSslDir.path),
       configName: configName,
       configArgs: configArgs,
       workDir: workDir,
       architecture: architecture,
     );
   } else if (usesUnixMakefileBuild(targetOS)) {
-    await _buildWithMake(openSslDir: openSslDir, configName: configName, configArgs: configArgs);
+    await _buildWithMake(
+      openSslDir: Uri.directory(openSslDir.path),
+      configName: configName,
+      configArgs: configArgs,
+    );
   } else {
     throw UnsupportedError('Unsupported target OS: ${targetOS.name}');
   }
 
-  final libPath = outputDir.resolve(libName).toFilePath(windows: Platform.isWindows);
-  await File(openSslDir.resolve(libName).toFilePath(windows: Platform.isWindows)).copy(libPath);
-  await Directory(openSslDir.toFilePath(windows: Platform.isWindows)).delete(recursive: true);
+  final built = File('${openSslDir.path}/$libName');
+  if (!built.existsSync()) {
+    final alt = _findBuiltArtifact(openSslDir, libName);
+    if (alt == null) {
+      throw StateError('Expected $libName under ${openSslDir.path}');
+    }
+    final dest = outputDir.resolve(alt.uri.pathSegments.last).toFilePath(windows: Platform.isWindows);
+    await alt.copy(dest);
+    return alt.uri.pathSegments.last;
+  }
+
+  final dest = outputDir.resolve(libName).toFilePath(windows: Platform.isWindows);
+  await built.copy(dest);
+  return libName;
+}
+
+File? _findBuiltArtifact(Directory openSslDir, String libName) {
+  final pattern = libName.contains('.dll') ? 'libcrypto' : libName;
+  for (final f in openSslDir.listSync()) {
+    if (f is! File) continue;
+    if (f.path.contains(pattern)) return f;
+  }
+  return null;
 }
 
 Future<void> _buildWithMsvc({
@@ -146,17 +177,17 @@ Future<void> _buildWithMsvc({
     jomProgram = workDir.resolve('./jom/jom.exe').toFilePath(windows: true);
   }
 
-  await runProcess(
+  await _runProcess(
     perlProgram,
     ['Configure', configName, ...configArgs, '/FS'],
-    workingDirectory: openSslDir,
+    cwd: openSslDir,
     extraEnvironment: msvcEnv,
   );
 
-  await runProcess(
+  await _runProcess(
     jomProgram,
     ['-j', '${Platform.numberOfProcessors}'],
-    workingDirectory: openSslDir,
+    cwd: openSslDir,
     extraEnvironment: msvcEnv,
   );
 
@@ -177,8 +208,8 @@ Future<void> _buildWithMake({
     throw Exception('perl is not installed. Install perl to build OpenSSL from source.');
   }
 
-  await runProcess('./Configure', [configName, ...configArgs], workingDirectory: openSslDir);
-  await runProcess('make', ['-j', '${Platform.numberOfProcessors}'], workingDirectory: openSslDir);
+  await _runProcess('./Configure', [configName, ...configArgs], cwd: openSslDir);
+  await _runProcess('make', ['-j', '${Platform.numberOfProcessors}'], cwd: openSslDir);
 }
 
 bool get _isWindowsArm64Host {
@@ -281,23 +312,23 @@ Future<String> _findVisualStudioInstallPath() async {
 
 Future<bool> isProgramInstalled(String programName) async {
   try {
-    await runProcess(programName, []);
+    await _runProcess(programName, []);
     return true;
   } catch (_) {
     return false;
   }
 }
 
-Future<String> runProcess(
+Future<void> _runProcess(
   String executable,
   List<String> arguments, {
-  Uri? workingDirectory,
+  Uri? cwd,
   Map<String, String>? extraEnvironment,
 }) async {
   final processResult = await Process.run(
     executable,
     arguments,
-    workingDirectory: workingDirectory?.toFilePath(windows: Platform.isWindows),
+    workingDirectory: cwd?.toFilePath(windows: Platform.isWindows),
     environment: {...?extraEnvironment, ...environment},
     includeParentEnvironment: true,
   );
@@ -311,7 +342,6 @@ Future<String> runProcess(
       ..writeln(processResult.stderr);
     throw ProcessException(executable, arguments, message.toString(), processResult.exitCode);
   }
-  return processResult.stdout.toString();
 }
 
 Future<void> downloadAndExtract(
@@ -320,16 +350,16 @@ Future<void> downloadAndExtract(
   Uri workDir, {
   bool createFolderForExtraction = true,
 }) async {
-  await runProcess('curl', ['-L', url, '-o', outputFileName], workingDirectory: workDir);
+  await _runProcess('curl', ['-L', url, '-o', outputFileName], cwd: workDir);
 
   final isTarGz = outputFileName.endsWith('.tar.gz');
   final destinationPath = workDir.resolve(outputFileName.replaceAll('.tar.gz', '').replaceAll('.zip', ''));
   await Directory(destinationPath.toFilePath(windows: Platform.isWindows)).create(recursive: true);
-  await runProcess('tar', [
+  await _runProcess('tar', [
     isTarGz ? '-xzf' : '-xf',
     outputFileName,
     if (createFolderForExtraction) ...['-C', destinationPath.toFilePath(windows: Platform.isWindows)],
-  ], workingDirectory: workDir);
+  ], cwd: workDir);
 
   await File(workDir.resolve(outputFileName).toFilePath(windows: Platform.isWindows)).delete();
 }

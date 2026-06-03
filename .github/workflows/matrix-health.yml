@@ -1,0 +1,90 @@
+name: Prebuilt matrix health
+
+on:
+  schedule:
+    - cron: "0 6 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  health:
+    name: health-${{ matrix.triple }}
+    runs-on: ${{ matrix.os }}
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            triple: linux-x64
+            script: native/build/linux.sh
+          - os: ubuntu-latest
+            triple: linux-arm64
+            script: native/build/linux.sh
+          - os: macos-latest
+            triple: macos-universal
+            script: native/build/macos.sh
+          - os: macos-latest
+            triple: ios-xcframework
+            script: native/build/macos.sh
+          - os: ubuntu-latest
+            triple: android-arm64-v8a
+            script: native/build/android.sh
+          - os: ubuntu-latest
+            triple: android-x86_64
+            script: native/build/android.sh
+          - os: windows-latest
+            triple: windows-x64
+            script: native/build/windows.ps1
+          - os: windows-11-arm
+            triple: windows-arm64
+            script: native/build/windows.ps1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Linux build deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y perl make curl
+          if [ "${{ matrix.triple }}" = "linux-arm64" ] && [ "$(uname -m)" != "aarch64" ]; then
+            sudo apt-get install -y gcc-aarch64-linux-gnu
+          fi
+
+      - name: Setup Android NDK
+        if: startsWith(matrix.triple, 'android-')
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r27c
+
+      - name: Install Windows build tools
+        if: runner.os == 'Windows'
+        run: choco install strawberryperl jom -y
+
+      - name: Build (smoke, no commit)
+        shell: bash
+        env:
+          TRIPLE: ${{ matrix.triple }}
+        run: |
+          set -euo pipefail
+          if [[ "${{ matrix.script }}" == *.ps1 ]]; then
+            pwsh -File "${{ matrix.script }}" -Triple "${TRIPLE}"
+          else
+            chmod +x native/build/*.sh
+            bash "${{ matrix.script }}"
+          fi
+
+  summary:
+    needs: health
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Matrix summary
+        run: |
+          echo "## Prebuilt matrix health" >> "$GITHUB_STEP_SUMMARY"
+          echo "Job result: ${{ needs.health.result }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "See per-triple jobs for failures (continue-on-error)." >> "$GITHUB_STEP_SUMMARY"

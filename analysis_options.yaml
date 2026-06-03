@@ -6,3 +6,5 @@ analyzer:
     - example/flutter_openssl/**
     - openssl-3.5.4/**
     - openssl_repo/**
+    - native/third_party/openssl/**
+    - native/out/**
