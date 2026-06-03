@@ -26,15 +26,11 @@ esac
 ensure_openssl_src
 cd "${OPENSSL_SRC}"
 if [[ -n "${CROSS_PREFIX}" ]]; then
-  export CC="${CROSS_PREFIX}gcc"
-  export CXX="${CROSS_PREFIX}g++"
-  export AR="${CROSS_PREFIX}ar"
-  export RANLIB="${CROSS_PREFIX}ranlib"
-  export PATH="${PATH}:/usr/bin"
-  command -v "${CC}" >/dev/null || {
-    echo "Missing ${CC}; install gcc-aarch64-linux-gnu"
+  command -v "${CROSS_PREFIX}gcc" >/dev/null || {
+    echo "Missing ${CROSS_PREFIX}gcc; install gcc-aarch64-linux-gnu"
     exit 1
   }
+  # OpenSSL appends cross-compile-prefix to tool names; do not also set CC to a prefixed name.
   ./Configure "${CONFIG}" --cross-compile-prefix="${CROSS_PREFIX}" "${CONFIGURE_ARGS[@]}"
 else
   ./Configure "${CONFIG}" "${CONFIGURE_ARGS[@]}"

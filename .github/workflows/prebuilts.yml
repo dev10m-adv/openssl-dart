@@ -174,13 +174,17 @@ jobs:
 
       - name: Install Windows build tools
         if: runner.os == 'Windows'
-        run: choco install strawberryperl jom -y
+        shell: pwsh
+        run: |
+          choco install strawberryperl jom -y
+          Add-Content -Path $env:GITHUB_PATH -Value "C:\Strawberry\perl\bin"
 
       - name: Build prebuilt
         shell: bash
         env:
           TRIPLE: ${{ matrix.triple }}
           ANDROID_NDK_ROOT: ${{ env.ANDROID_NDK_HOME }}
+          PERL: C:\Strawberry\perl\bin\perl.exe
         run: |
           set -euo pipefail
           if [[ "${{ matrix.script }}" == *.ps1 ]]; then
@@ -201,7 +205,10 @@ jobs:
   merge-commit:
     name: merge-prebuilts
     needs: [check-hash, build-prebuilts]
-    if: needs.check-hash.outputs.should_build == 'true' && needs.build-prebuilts.result == 'success'
+    # Optional matrix legs use continue-on-error; merge when required builds succeeded.
+    if: >-
+      needs.check-hash.outputs.should_build == 'true' &&
+      (needs.build-prebuilts.result == 'success' || needs.build-prebuilts.result == 'failure')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

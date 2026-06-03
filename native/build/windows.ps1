@@ -39,6 +39,23 @@ function Ensure-OpenSslSrc {
   return $extracted
 }
 
+function Resolve-PerlExe {
+  if ($env:PERL -and (Test-Path -LiteralPath $env:PERL)) {
+    return $env:PERL
+  }
+  foreach ($candidate in @(
+      'C:\Strawberry\perl\bin\perl.exe',
+      'C:\strawberry\perl\bin\perl.exe'
+    )) {
+    if (Test-Path -LiteralPath $candidate) { return $candidate }
+  }
+  $cmd = Get-Command perl -ErrorAction SilentlyContinue
+  if ($cmd -and $cmd.Source -notmatch '\\Git\\') {
+    return $cmd.Source
+  }
+  throw 'Strawberry Perl not found (install: choco install strawberryperl)'
+}
+
 function Get-VcVarsEnv([string]$Arch) {
   $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
   $install = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
@@ -63,9 +80,12 @@ $arch = if ($Triple -eq 'windows-arm64') { 'arm64' } else { 'x64' }
 $vcEnv = Get-VcVarsEnv $arch
 foreach ($k in $vcEnv.Keys) { Set-Item -Path "env:$k" -Value $vcEnv[$k] }
 
+$perl = Resolve-PerlExe
+Write-Host "Using perl: $perl"
+
 Push-Location $src
 $args = @('Configure', $Config, 'no-unit-test', 'no-makedepend', 'no-ssl', 'no-apps', 'no-asm', '/FS')
-& perl @args
+& $perl @args
 if (-not (Get-Command jom -ErrorAction SilentlyContinue)) { throw 'jom required on PATH' }
 & jom -j $env:NUMBER_OF_PROCESSORS
 Pop-Location
