@@ -35,9 +35,6 @@ jobs:
           dart run tool/check_repo.dart --allow-partial
 
       - name: Analyze and test
-        env:
-          NIX_OPENSSL_SKIP_NATIVE_HOOK: '1'
-          OPENSSL_SKIP_NATIVE_HOOK: '1'
         run: |
           dart pub get --no-example
           dart analyze
