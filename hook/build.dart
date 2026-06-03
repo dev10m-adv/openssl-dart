@@ -158,24 +158,14 @@ Future<void> _buildWithMsvc({
   }
 
   final msvcEnv = await resolveWindowsBuildEnvironment(architecture);
-  final needDownloadPerl = !await isProgramInstalled('perl');
-  final needDownloadJom = !await isProgramInstalled('jom');
-  var perlProgram = 'perl';
-  var jomProgram = 'jom';
+  final perlResolution = await _resolveWindowsPerl(workDir);
+  final perlProgram = perlResolution.path;
+  final needDownloadPerl = perlResolution.downloaded;
+  final jomResolution = await _resolveWindowsJom(workDir);
+  final jomProgram = jomResolution.path;
+  final needDownloadJom = jomResolution.downloaded;
 
-  if (needDownloadPerl) {
-    final perlUrl = _isWindowsArm64Host ? perlDownloadUrlModern : perlDownloadUrlLegacy;
-    await downloadAndExtract(perlUrl, 'perl.zip', workDir);
-    perlProgram = workDir.resolve('./perl/perl/bin/perl.exe').toFilePath(windows: true);
-  }
-  if (!File(perlProgram).existsSync()) {
-    throw StateError('perl not found at $perlProgram after bootstrap');
-  }
   print('openssl: using perl at $perlProgram');
-  if (needDownloadJom) {
-    await downloadAndExtract(jomDownloadUrl, 'jom.zip', workDir);
-    jomProgram = workDir.resolve('./jom/jom.exe').toFilePath(windows: true);
-  }
 
   await _runProcess(
     perlProgram,
@@ -215,6 +205,65 @@ Future<void> _buildWithMake({
 bool get _isWindowsArm64Host {
   final arch = Platform.environment['PROCESSOR_ARCHITECTURE'] ?? '';
   return Platform.isWindows && arch.toUpperCase().contains('ARM64');
+}
+
+class _ToolResolution {
+  _ToolResolution({required this.path, required this.downloaded});
+  final String path;
+  final bool downloaded;
+}
+
+Future<_ToolResolution> _resolveWindowsPerl(Uri workDir) async {
+  final fromEnv = Platform.environment['PERL'];
+  if (fromEnv != null && fromEnv.isNotEmpty && File(fromEnv).existsSync()) {
+    return _ToolResolution(path: fromEnv, downloaded: false);
+  }
+  const known = [
+    r'C:\Strawberry\perl\bin\perl.exe',
+    r'C:\strawberry\perl\bin\perl.exe',
+  ];
+  for (final path in known) {
+    if (File(path).existsSync()) {
+      return _ToolResolution(path: path, downloaded: false);
+    }
+  }
+  final onPath = await _whereExecutable('perl');
+  if (onPath != null) {
+    return _ToolResolution(path: onPath, downloaded: false);
+  }
+
+  final perlUrl = _isWindowsArm64Host ? perlDownloadUrlModern : perlDownloadUrlLegacy;
+  await downloadAndExtract(perlUrl, 'perl.zip', workDir);
+  final downloaded = workDir.resolve('./perl/perl/bin/perl.exe').toFilePath(windows: true);
+  if (!File(downloaded).existsSync()) {
+    throw StateError('perl not found at $downloaded after bootstrap');
+  }
+  return _ToolResolution(path: downloaded, downloaded: true);
+}
+
+Future<_ToolResolution> _resolveWindowsJom(Uri workDir) async {
+  final onPath = await _whereExecutable('jom');
+  if (onPath != null) {
+    return _ToolResolution(path: onPath, downloaded: false);
+  }
+  await downloadAndExtract(jomDownloadUrl, 'jom.zip', workDir);
+  final downloaded = workDir.resolve('./jom/jom.exe').toFilePath(windows: true);
+  if (!File(downloaded).existsSync()) {
+    throw StateError('jom not found at $downloaded after bootstrap');
+  }
+  return _ToolResolution(path: downloaded, downloaded: true);
+}
+
+Future<String?> _whereExecutable(String name) async {
+  if (!Platform.isWindows) return null;
+  final result = await Process.run('where', [name], runInShell: true);
+  if (result.exitCode != 0) return null;
+  for (final line in (result.stdout as String).split(RegExp(r'\r?\n'))) {
+    final path = line.trim();
+    if (path.isEmpty) continue;
+    if (File(path).existsSync()) return path;
+  }
+  return null;
 }
 
 extension on String {

@@ -115,6 +115,8 @@ jobs:
         run: dart pub get
 
       - name: Verify prebuilts (partial ok on PRs without full matrix)
+        env:
+          PERL: ${{ runner.os == 'Windows' && 'C:\Strawberry\perl\bin\perl.exe' || '' }}
         run: dart run tool/verify_prebuilts.dart --allow-partial
 
       - name: analyze
