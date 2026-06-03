@@ -74,6 +74,8 @@ jobs:
 
       - name: Manifest and submodule
         run: |
+          TAG="openssl-$(tr -d '\r\n' < native/src/VERSION)"
+          git -C native/third_party/openssl fetch --depth=1 origin "refs/tags/${TAG}:refs/tags/${TAG}"
           dart run tool/sign_prebuilts.dart --check --allow-partial
           dart run tool/check_submodule.dart
 
