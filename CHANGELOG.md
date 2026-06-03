@@ -1,3 +1,8 @@
+## Unreleased
+
+- Prebuilt integrity: per-version `manifest.json` with SHA-256 per artifact; optional Ed25519 `manifest.json.sig` (`tool/sign_prebuilts.dart`, `PREBUILT_SIGNING_PRIVATE_KEY`).
+- `OPENSSL_VERIFY_PREBUILTS=1` for strict hook verification; [docs/DOWNSTREAM_VERIFICATION.md](docs/DOWNSTREAM_VERIFICATION.md) for app teams.
+
 ## 1.2.2
 
 - Repo maintenance: strict prebuilt verify on PRs touching LFS paths, bot PRs for prebuilts/ffigen, Dependabot, LFS smoke, OpenSSL release checker, matrix health, stale prebuilt cleanup, release workflow.

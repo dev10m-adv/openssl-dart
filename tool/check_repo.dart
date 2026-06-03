@@ -6,7 +6,7 @@ void main(List<String> args) async {
   final verifyArgs = allowPartial ? ['--allow-partial'] : <String>[];
 
   final steps = <_Step>[
-    _Step('sync_manifest', ['tool/sync_manifest.dart', '--check']),
+    _Step('sign_prebuilts', ['tool/sign_prebuilts.dart', '--check', ...verifyArgs]),
     _Step('check_submodule', ['tool/check_submodule.dart']),
     _Step('compute_build_hash', ['tool/compute_build_hash.dart']),
     _Step('verify_prebuilts', ['tool/verify_prebuilts.dart', ...verifyArgs]),

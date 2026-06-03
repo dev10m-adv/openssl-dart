@@ -17,7 +17,7 @@
 - Build native assets: `dart test` or `dart run example/main.dart` (uses LFS prebuilt when present, else compiles).
 - Tests: `dart test`.
 - Prebuilts: see [`native/prebuilt/README.md`](native/prebuilt/README.md). Hash-gated CI: `.github/workflows/prebuilts.yml` (runs when `native/**` or hook inputs change).
-- Bump OpenSSL: see [CONTRIBUTING.md](CONTRIBUTING.md) checklist (`VERSION` → `dart run tool/sync_manifest.dart` → submodule tag).
+- Bump OpenSSL: see [CONTRIBUTING.md](CONTRIBUTING.md) checklist (`VERSION` → `dart run tool/sign_prebuilts.dart` → submodule tag).
 - Build one triple: `TRIPLE=linux-x64 bash native/build/linux.sh` then `dart run tool/compute_build_hash.dart`.
 
 ### Publishing to pub.dev

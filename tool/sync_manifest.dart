@@ -4,8 +4,9 @@ import 'dart:io';
 import 'package:openssl/src/native_version.dart';
 import 'package:openssl/src/prebuilt_paths.dart';
 
-/// Syncs [native/prebuilt/manifest.json] from [native/src/VERSION] and [requiredPrebuiltTriples].
+/// Syncs [native/prebuilt/manifest.json] index from [native/src/VERSION].
 ///
+/// Prefer [tool/sign_prebuilts.dart] for version manifests and SHA-256.
 /// `--check`: exit 1 if manifest would change (CI).
 void main(List<String> args) {
   final checkOnly = args.contains('--check');

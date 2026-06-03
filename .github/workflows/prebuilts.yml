@@ -11,7 +11,9 @@ on:
       - lib/src/prebuilt_paths.dart
       - tool/compute_build_hash.dart
       - tool/verify_prebuilts.dart
+      - tool/sign_prebuilts.dart
       - tool/sync_manifest.dart
+      - lib/src/prebuilt_attestation.dart
       - tool/check_repo.dart
   workflow_dispatch:
 
@@ -44,10 +46,8 @@ jobs:
         id: version
         run: echo "openssl_version=$(tr -d '\r\n' < native/src/VERSION)" >> "$GITHUB_OUTPUT"
 
-      - name: Sync manifest and validate submodule
-        run: |
-          dart run tool/sync_manifest.dart --check
-          dart run tool/check_submodule.dart
+      - name: Validate submodule
+        run: dart run tool/check_submodule.dart
 
       - name: Compute build hash
         run: dart run tool/compute_build_hash.dart /tmp/computed-hash.txt
@@ -215,14 +215,21 @@ jobs:
         with:
           sdk: stable
 
-      - name: Sync manifest and update hash
+      - name: Sign manifest and update hash
+        env:
+          PREBUILT_SIGNING_PRIVATE_KEY: ${{ secrets.PREBUILT_SIGNING_PRIVATE_KEY }}
         run: |
-          dart run tool/sync_manifest.dart
+          dart run tool/sign_prebuilts.dart
           dart run tool/compute_build_hash.dart
           cat "native/prebuilt/$(tr -d '\r\n' < native/src/VERSION)/.build-hash"
 
       - name: Verify prebuilts
-        run: dart run tool/verify_prebuilts.dart
+        run: |
+          if [ -n "${{ secrets.PREBUILT_SIGNING_PRIVATE_KEY }}" ]; then
+            dart run tool/verify_prebuilts.dart --require-signature
+          else
+            dart run tool/verify_prebuilts.dart
+          fi
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v7

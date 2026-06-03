@@ -2,13 +2,16 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:openssl/src/native_version.dart';
+import 'package:openssl/src/prebuilt_attestation.dart';
 import 'package:openssl/src/prebuilt_paths.dart';
 
 /// Fails if required [native/prebuilt/<version>/] artifacts are missing or LFS pointers.
 ///
 /// `--allow-partial`: skip missing triple directories (for PRs that do not ship full matrix).
-void main(List<String> args) {
+/// `--require-signature`: require valid [manifest.json.sig] when public key is present.
+void main(List<String> args) async {
   final allowPartial = args.contains('--allow-partial');
+  final requireSignature = args.contains('--require-signature');
   final packageRoot = Directory.current.uri;
   final version = readOpenSslVersion(packageRoot);
   final versionRoot = Directory.fromUri(prebuiltVersionRootUri(packageRoot));
@@ -22,7 +25,21 @@ void main(List<String> args) {
   }
 
   final failures = <String>[];
-  _verifyManifest(packageRoot, version, failures);
+  _verifyRootIndex(packageRoot, version, failures);
+
+  final manifestFile = File.fromUri(versionManifestUri(packageRoot));
+  if (manifestFile.existsSync()) {
+    final sigFile = File.fromUri(versionManifestSigUri(packageRoot));
+    if (requireSignature && !sigFile.existsSync()) {
+      failures.add('${sigFile.path} missing (--require-signature)');
+    }
+    final sigError = await verifyManifestSignature(packageRoot);
+    if (sigError != null) {
+      failures.add(sigError);
+    }
+  } else if (!allowPartial) {
+    failures.add('${manifestFile.path} missing (run dart run tool/sign_prebuilts.dart)');
+  }
 
   if (!allowPartial) {
     final hashFile = File.fromUri(buildHashFileUri(packageRoot));
@@ -42,16 +59,34 @@ void main(List<String> args) {
       continue;
     }
     if (triple == 'ios-xcframework') {
-      _verifyIosXcframework(dir, failures, version, triple);
+      await _verifyIosXcframework(packageRoot, dir, failures, version, triple, manifestFile.existsSync());
       continue;
     }
-    _verifySharedLibrary(dir, failures, version, triple);
+    await _verifySharedLibrary(packageRoot, dir, failures, version, triple, manifestFile.existsSync());
+  }
+
+  if (manifestFile.existsSync()) {
+    final onDisk = collectVersionArtifacts(versionRoot);
+    final manifest = readVersionManifest(packageRoot);
+    final listed = (manifest['artifacts'] as Map<String, dynamic>?) ?? {};
+    for (final path in listed.keys) {
+      if (!onDisk.containsKey(path)) {
+        if (!allowPartial) {
+          failures.add('manifest lists $path but file missing on disk');
+        }
+      }
+    }
   }
 
   for (final entity in versionRoot.listSync(recursive: true)) {
     if (entity is! File) continue;
     final name = entity.uri.pathSegments.last;
-    if (name == '.build-hash' || name.endsWith('.md')) continue;
+    if (name == versionManifestName ||
+        name == versionManifestSigName ||
+        name == '.build-hash' ||
+        name.endsWith('.md')) {
+      continue;
+    }
     if (entity.lengthSync() < 4096) {
       failures.add('${entity.path} (${entity.lengthSync()} bytes — run `git lfs pull`)');
     }
@@ -69,30 +104,30 @@ void main(List<String> args) {
   exit(1);
 }
 
-void _verifyManifest(Uri packageRoot, String version, List<String> failures) {
-  final manifestFile = File.fromUri(prebuiltManifestUri(packageRoot));
-  if (!manifestFile.existsSync()) {
-    failures.add('native/prebuilt/manifest.json missing');
+void _verifyRootIndex(Uri packageRoot, String version, List<String> failures) {
+  final indexFile = File.fromUri(prebuiltManifestUri(packageRoot));
+  if (!indexFile.existsSync()) {
+    failures.add('native/prebuilt/manifest.json (index) missing');
     return;
   }
   try {
-    final json = jsonDecode(manifestFile.readAsStringSync()) as Map<String, dynamic>;
-    final active = json['activeVersion'] as String?;
-    if (active != version) {
-      failures.add('manifest activeVersion=$active does not match native/src/VERSION=$version');
-    }
-    final triples = (json['triples'] as List<dynamic>?)?.cast<String>() ?? [];
-    for (final required in requiredPrebuiltTriples) {
-      if (!triples.contains(required)) {
-        failures.add('manifest.json missing triple $required');
-      }
+    final json = jsonDecode(indexFile.readAsStringSync()) as Map<String, dynamic>;
+    if (json['activeVersion'] != version) {
+      failures.add('index activeVersion != $version');
     }
   } on FormatException catch (e) {
-    failures.add('manifest.json invalid: $e');
+    failures.add('index manifest invalid: $e');
   }
 }
 
-void _verifyIosXcframework(Directory dir, List<String> failures, String version, String triple) {
+Future<void> _verifyIosXcframework(
+  Uri packageRoot,
+  Directory dir,
+  List<String> failures,
+  String version,
+  String triple,
+  bool hasManifest,
+) async {
   final xc = Directory('${dir.path}/OpenSSL.xcframework');
   if (!xc.existsSync()) {
     failures.add('$version/$triple/OpenSSL.xcframework missing');
@@ -104,6 +139,10 @@ void _verifyIosXcframework(Directory dir, List<String> failures, String version,
     if (entity.path.endsWith('libcrypto.a') || entity.path.endsWith('libcrypto.dylib')) {
       if (entity.lengthSync() >= 4096) {
         foundArtifact = true;
+        if (hasManifest) {
+          final err = await verifyPrebuiltArtifact(packageRoot: packageRoot, artifactFile: entity);
+          if (err != null) failures.add(err);
+        }
       }
     }
   }
@@ -112,7 +151,14 @@ void _verifyIosXcframework(Directory dir, List<String> failures, String version,
   }
 }
 
-void _verifySharedLibrary(Directory dir, List<String> failures, String version, String triple) {
+Future<void> _verifySharedLibrary(
+  Uri packageRoot,
+  Directory dir,
+  List<String> failures,
+  String version,
+  String triple,
+  bool hasManifest,
+) async {
   final patterns = switch (triple) {
     'windows-x64' || 'windows-arm64' => ['libcrypto', '.dll'],
     'macos-universal' => ['libcrypto', '.dylib'],
@@ -124,6 +170,10 @@ void _verifySharedLibrary(Directory dir, List<String> failures, String version, 
     if (entity.path.contains(patterns[0]) && entity.path.endsWith(patterns[1])) {
       if (entity.lengthSync() >= 4096) {
         ok = true;
+        if (hasManifest) {
+          final err = await verifyPrebuiltArtifact(packageRoot: packageRoot, artifactFile: entity);
+          if (err != null) failures.add(err);
+        }
       }
     }
   }

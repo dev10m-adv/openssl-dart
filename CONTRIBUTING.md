@@ -18,14 +18,21 @@ dart pub get
 ```bash
 dart run tool/check_repo.dart          # strict (full prebuilt matrix)
 dart run tool/check_repo.dart --allow-partial
-dart run tool/sync_manifest.dart
+dart run tool/sign_prebuilts.dart      # version manifest + SHA-256; signs if PREBUILT_SIGNING_PRIVATE_KEY set
 dart run tool/compute_build_hash.dart
 ```
+
+Downstream apps that depend on git/LFS prebuilts should pin a release tag and verify checksums (and optionally the Ed25519 manifest signature). See [docs/DOWNSTREAM_VERIFICATION.md](docs/DOWNSTREAM_VERIFICATION.md).
+
+### Prebuilt signing (maintainers)
+
+1. Generate a keypair once: `dart run tool/generate_signing_keypair.dart` — commit `native/src/prebuilt_signing_public.key`, store the printed private key as GitHub secret `PREBUILT_SIGNING_PRIVATE_KEY`.
+2. Prebuilts CI runs `dart run tool/sign_prebuilts.dart` with that secret to write `native/prebuilt/<version>/manifest.json` and `manifest.json.sig`.
 
 ## OpenSSL version bump checklist
 
 1. Edit [`native/src/VERSION`](native/src/VERSION) (single source of truth).
-2. `dart run tool/sync_manifest.dart` (updates [`native/prebuilt/manifest.json`](native/prebuilt/manifest.json)).
+2. `dart run tool/sign_prebuilts.dart` (updates version manifest + [`native/prebuilt/manifest.json`](native/prebuilt/manifest.json) index).
 3. Point submodule at tag `openssl-<version>`:
    ```bash
    cd native/third_party/openssl

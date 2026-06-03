@@ -31,7 +31,7 @@ void main(List<String> args) async {
     final outputDir = input.outputDirectoryShared;
     final packageRoot = input.packageRoot;
 
-    final prebuilt = findPrebuiltLibcrypto(
+    final prebuilt = await findPrebuiltLibcrypto(
       packageRoot: packageRoot,
       targetOS: targetOS,
       architecture: architecture,
