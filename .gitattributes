@@ -1,8 +1,8 @@
 native/prebuilt/** filter=lfs diff=lfs merge=lfs -text
 native/prebuilt/**/.build-hash !filter !diff !merge text
 native/prebuilt/**/README.md !filter !diff !merge text
-native/prebuilt/**/manifest.json !filter !diff !merge text
-native/prebuilt/**/manifest.json.sig !filter !diff !merge text
-native/prebuilt/manifest.json !filter !diff !merge text
+native/prebuilt/**/manifest.json !filter !diff !merge text eol=lf
+native/prebuilt/**/manifest.json.sig !filter !diff !merge text eol=lf
+native/prebuilt/manifest.json !filter !diff !merge text eol=lf
 native/prebuilt/README.md !filter !diff !merge text
 native/src/prebuilt_signing_public.key -text

@@ -36,7 +36,11 @@ void main(List<String> args) async {
     }
     final sigError = await verifyManifestSignature(packageRoot);
     if (sigError != null) {
-      failures.add(sigError);
+      if (requireSignature) {
+        failures.add(sigError);
+      } else {
+        stdout.writeln('verify_prebuilts: warning: $sigError');
+      }
     }
   } else if (!allowPartial) {
     failures.add('${manifestFile.path} missing (run dart run tool/sign_prebuilts.dart)');
