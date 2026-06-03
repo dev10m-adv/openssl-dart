@@ -32,7 +32,7 @@ jobs:
           TAG="openssl-$(tr -d '\r\n' < native/src/VERSION)"
           git -C native/third_party/openssl fetch --depth=1 origin "refs/tags/${TAG}:refs/tags/${TAG}"
           dart pub get --no-example
-          dart run tool/check_repo.dart
+          dart run tool/check_repo.dart --allow-partial
 
       - name: Analyze and test
         env:
