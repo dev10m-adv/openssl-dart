@@ -15,22 +15,30 @@ void main() {
     exit(1);
   }
 
-  final result = Process.runSync(
+  final head = Process.runSync(
     'git',
-    ['-C', submodule.path, 'describe', '--tags', '--exact-match'],
+    ['-C', submodule.path, 'rev-parse', 'HEAD'],
     runInShell: Platform.isWindows,
   );
-  if (result.exitCode != 0) {
-    stderr.writeln('check_submodule: submodule not on an exact tag (expected $expectedTag)');
-    stderr.writeln((result.stderr as String).trim());
+  final tagRef = Process.runSync(
+    'git',
+    ['-C', submodule.path, 'rev-parse', expectedTag],
+    runInShell: Platform.isWindows,
+  );
+  if (tagRef.exitCode != 0) {
+    stderr.writeln(
+      'check_submodule: tag $expectedTag not found (run: git -C ${submodule.path} fetch --tags origin)',
+    );
+    stderr.writeln((tagRef.stderr as String).trim());
     exit(1);
   }
 
-  final tag = (result.stdout as String).trim();
-  if (tag != expectedTag) {
-    stderr.writeln('check_submodule: got tag $tag, expected $expectedTag');
+  final headSha = (head.stdout as String).trim();
+  final tagSha = (tagRef.stdout as String).trim();
+  if (headSha != tagSha) {
+    stderr.writeln('check_submodule: HEAD $headSha != $expectedTag ($tagSha)');
     exit(1);
   }
 
-  stdout.writeln('check_submodule: ok ($tag)');
+  stdout.writeln('check_submodule: ok ($expectedTag @ ${headSha.substring(0, 12)})');
 }

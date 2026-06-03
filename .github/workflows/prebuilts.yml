@@ -51,6 +51,11 @@ jobs:
         id: version
         run: echo "openssl_version=$(tr -d '\r\n' < native/src/VERSION)" >> "$GITHUB_OUTPUT"
 
+      - name: Fetch OpenSSL submodule tag
+        run: |
+          TAG="openssl-${{ steps.version.outputs.openssl_version }}"
+          git -C native/third_party/openssl fetch --depth=1 origin "refs/tags/${TAG}:refs/tags/${TAG}"
+
       - name: Validate submodule
         run: dart run tool/check_submodule.dart
 
@@ -143,6 +148,11 @@ jobs:
         id: version
         run: echo "openssl_version=$(tr -d '\r\n' < native/src/VERSION)" >> "$GITHUB_OUTPUT"
 
+      - name: Fetch OpenSSL submodule tag
+        run: |
+          TAG="openssl-${{ steps.version.outputs.openssl_version }}"
+          git -C native/third_party/openssl fetch --depth=1 origin "refs/tags/${TAG}:refs/tags/${TAG}"
+
       - name: Install Linux build deps
         if: runner.os == 'Linux'
         run: |
@@ -198,6 +208,11 @@ jobs:
       - name: Read OpenSSL version
         id: version
         run: echo "openssl_version=$(tr -d '\r\n' < native/src/VERSION)" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch OpenSSL submodule tag
+        run: |
+          TAG="openssl-${{ steps.version.outputs.openssl_version }}"
+          git -C native/third_party/openssl fetch --depth=1 origin "refs/tags/${TAG}:refs/tags/${TAG}"
 
       - uses: actions/download-artifact@v4
         with:

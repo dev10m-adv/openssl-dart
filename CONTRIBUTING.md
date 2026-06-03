@@ -41,7 +41,7 @@ Downstream apps that depend on git/LFS prebuilts should pin a release tag and ve
    dart run tool/check_submodule.dart
    ```
 4. Regenerate bindings if headers changed: `dart run tool/ffigen.dart` (CI opens a PR on submodule/ffigen changes).
-5. Run [Prebuilts workflow](.github/workflows/prebuilts.yml) or build locally via `native/build/*.sh`; merge the bot PR with LFS artifacts.
+5. Run [Prebuilts workflow](.github/workflows/prebuilts.yml) (or **Actions → Prebuilts → Run workflow** with `force_rebuild`); merge the bot PR with LFS artifacts.
 6. Optionally remove `native/prebuilt/<old-version>/` (monthly [stale-prebuilts](.github/workflows/stale-prebuilts.yml) workflow may propose this).
 
 ## CI overview
