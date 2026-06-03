@@ -39,7 +39,9 @@ void main(List<String> args) async {
       artifacts: artifacts,
     );
   }
-  final sigOk = newSig == null ? currentSig.isEmpty : currentSig == newSigB64;
+  // Without a signing key, --check must not require removing an existing .sig.
+  final sigOk =
+      newSig != null ? currentSig == newSigB64 : (checkOnly || currentSig.isEmpty);
 
   if (manifestOk && sigOk) {
     stdout.writeln('sign_prebuilts: ok');

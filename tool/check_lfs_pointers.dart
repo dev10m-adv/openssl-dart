@@ -20,6 +20,7 @@ void main() async {
     final parts = trimmed.split(RegExp(r'\s+'));
     if (parts.length < 3) continue;
     final path = parts.sublist(2).join(' ');
+    if (!_isPrebuiltBinaryPath(path)) continue;
     final file = File(path);
     if (!file.existsSync()) continue;
     if (file.lengthSync() < 4096) {
@@ -37,4 +38,17 @@ void main() async {
     stderr.writeln('  $f');
   }
   exit(1);
+}
+
+bool _isPrebuiltBinaryPath(String path) {
+  final name = path.split('/').last;
+  if (name == '.build-hash' ||
+      name == 'manifest.json' ||
+      name == 'manifest.json.sig' ||
+      name == 'README.md') {
+    return false;
+  }
+  if (name.contains('libcrypto')) return true;
+  if (name.endsWith('.xcframework')) return true;
+  return false;
 }

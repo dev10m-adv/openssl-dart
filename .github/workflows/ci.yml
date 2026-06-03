@@ -41,7 +41,11 @@ jobs:
           sdk: stable
 
       - name: Repo health (strict)
-        run: dart run tool/check_repo.dart
+        run: |
+          TAG="openssl-$(tr -d '\r\n' < native/src/VERSION)"
+          git -C native/third_party/openssl fetch --depth=1 origin "refs/tags/${TAG}:refs/tags/${TAG}"
+          dart pub get --no-example
+          dart run tool/check_repo.dart
 
   lfs-smoke:
     name: lfs-pointer-smoke
@@ -56,7 +60,7 @@ jobs:
           sdk: stable
 
       - name: Check LFS smudged files
-        run: dart run tool/check_lfs_pointers.dart
+        run: dart pub get --no-example && dart run tool/check_lfs_pointers.dart
 
   repo-health:
     name: repo-health
@@ -76,6 +80,7 @@ jobs:
         run: |
           TAG="openssl-$(tr -d '\r\n' < native/src/VERSION)"
           git -C native/third_party/openssl fetch --depth=1 origin "refs/tags/${TAG}:refs/tags/${TAG}"
+          dart pub get --no-example
           dart run tool/sign_prebuilts.dart --check --allow-partial
           dart run tool/check_submodule.dart
 
@@ -100,11 +105,15 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y perl make curl
 
-      - name: Verify prebuilts (partial ok on PRs without full matrix)
-        run: dart run tool/verify_prebuilts.dart --allow-partial
+      - name: Install Windows build deps
+        if: runner.os == 'Windows'
+        run: choco install strawberryperl jom -y
 
       - name: pub get
         run: dart pub get
+
+      - name: Verify prebuilts (partial ok on PRs without full matrix)
+        run: dart run tool/verify_prebuilts.dart --allow-partial
 
       - name: analyze
         run: dart analyze

@@ -49,9 +49,11 @@ jobs:
 
       - name: Read OpenSSL version
         id: version
+        shell: bash
         run: echo "openssl_version=$(tr -d '\r\n' < native/src/VERSION)" >> "$GITHUB_OUTPUT"
 
       - name: Fetch OpenSSL submodule tag
+        shell: bash
         run: |
           TAG="openssl-${{ steps.version.outputs.openssl_version }}"
           git -C native/third_party/openssl fetch --depth=1 origin "refs/tags/${TAG}:refs/tags/${TAG}"
@@ -146,9 +148,11 @@ jobs:
 
       - name: Read OpenSSL version
         id: version
+        shell: bash
         run: echo "openssl_version=$(tr -d '\r\n' < native/src/VERSION)" >> "$GITHUB_OUTPUT"
 
       - name: Fetch OpenSSL submodule tag
+        shell: bash
         run: |
           TAG="openssl-${{ steps.version.outputs.openssl_version }}"
           git -C native/third_party/openssl fetch --depth=1 origin "refs/tags/${TAG}:refs/tags/${TAG}"
@@ -176,7 +180,7 @@ jobs:
         shell: bash
         env:
           TRIPLE: ${{ matrix.triple }}
-          ANDROID_NDK_ROOT: ${{ env.ANDROID_NDK_ROOT }}
+          ANDROID_NDK_ROOT: ${{ env.ANDROID_NDK_HOME }}
         run: |
           set -euo pipefail
           if [[ "${{ matrix.script }}" == *.ps1 ]]; then
@@ -207,9 +211,11 @@ jobs:
 
       - name: Read OpenSSL version
         id: version
+        shell: bash
         run: echo "openssl_version=$(tr -d '\r\n' < native/src/VERSION)" >> "$GITHUB_OUTPUT"
 
       - name: Fetch OpenSSL submodule tag
+        shell: bash
         run: |
           TAG="openssl-${{ steps.version.outputs.openssl_version }}"
           git -C native/third_party/openssl fetch --depth=1 origin "refs/tags/${TAG}:refs/tags/${TAG}"

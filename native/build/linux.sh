@@ -30,6 +30,11 @@ if [[ -n "${CROSS_PREFIX}" ]]; then
   export CXX="${CROSS_PREFIX}g++"
   export AR="${CROSS_PREFIX}ar"
   export RANLIB="${CROSS_PREFIX}ranlib"
+  export PATH="${PATH}:/usr/bin"
+  command -v "${CC}" >/dev/null || {
+    echo "Missing ${CC}; install gcc-aarch64-linux-gnu"
+    exit 1
+  }
   ./Configure "${CONFIG}" --cross-compile-prefix="${CROSS_PREFIX}" "${CONFIGURE_ARGS[@]}"
 else
   ./Configure "${CONFIG}" "${CONFIGURE_ARGS[@]}"

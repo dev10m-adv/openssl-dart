@@ -13,7 +13,8 @@ case "${TRIPLE}" in
   *) echo "Unknown TRIPLE ${TRIPLE}"; exit 1 ;;
 esac
 
-: "${ANDROID_NDK_ROOT:?ANDROID_NDK_ROOT required}"
+ANDROID_NDK_ROOT="${ANDROID_NDK_ROOT:-${ANDROID_NDK_HOME:-}}"
+: "${ANDROID_NDK_ROOT:?ANDROID_NDK_ROOT or ANDROID_NDK_HOME required}"
 export ANDROID_NDK_HOME="${ANDROID_NDK_ROOT}"
 HOST_TAG="$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m)"
 TOOLCHAIN_BIN="${ANDROID_NDK_ROOT}/toolchains/llvm/prebuilt/${HOST_TAG}/bin"

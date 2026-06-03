@@ -1,3 +1,21 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:45c9100bb073de67c0c1ce87007c20733b0bf2e9dbdf12d04aa5fef0991e1e8b
-size 461
+{
+  "activeVersion": "3.5.4",
+  "algorithm": "sha256",
+  "publicKeyId": "prebuilt-default",
+  "triples": [
+    "android-arm64-v8a",
+    "android-x86_64",
+    "ios-xcframework",
+    "macos-universal",
+    "windows-x64",
+    "windows-arm64",
+    "linux-x64",
+    "linux-arm64"
+  ],
+  "artifacts": {
+    "windows-arm64/libcrypto-3-arm64.dll": {
+      "sha256": "a38fcafffd0146f1e8a562f2eee87f80c0193435bf374bc6e67f31e3cb11842a",
+      "bytes": 7221760
+    }
+  }
+}
