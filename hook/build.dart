@@ -40,6 +40,17 @@ void main(List<String> args) async {
     final outputDir = input.outputDirectoryShared;
     final packageRoot = input.packageRoot;
 
+    final platformDir = resolvePrebuiltPlatformDir(
+      targetOS: targetOS,
+      architecture: architecture,
+      linkMode: linkMode,
+    );
+    print(
+      'openssl: target ${targetOS.name}-${architecture.name}'
+      '${iosSdk != null ? ' ($iosSdk)' : ''}'
+      ' → prebuilt/${platformDir ?? 'compile from source'}',
+    );
+
     final prebuilt = await findPrebuiltLibcrypto(
       packageRoot: packageRoot,
       targetOS: targetOS,

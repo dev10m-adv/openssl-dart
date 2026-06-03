@@ -1,0 +1,11 @@
+name: openssl_example
+description: OpenSSL libcrypto AES-256-CBC example (Dart CLI).
+publish_to: none
+
+environment:
+  sdk: ^3.10.1
+
+dependencies:
+  openssl:
+    path: ..
+  ffi: ^2.1.5

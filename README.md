@@ -38,20 +38,53 @@ Background on hooks/native assets: [Dart build hooks: create Dart packages from 
 
 2. Run your app or tests once. The hook links `libcrypto` (prebuilt if present, otherwise ~1 minute compile).
 
+   **Flutter apps:** [docs/FLUTTER.md](docs/FLUTTER.md) · **Sample app:** [docs/SAMPLE_APP.md](docs/SAMPLE_APP.md) · helpers: `package:openssl/crypto.dart`
+
 ### Flutter notes
 
-- Requires **Flutter 3.38+** (Dart 3.10+ native assets).
+- Requires **Flutter 3.38+** (Dart 3.10+ native assets). See **[docs/FLUTTER.md](docs/FLUTTER.md)** for git vs pub.dev, LFS setup, and platform selection.
+- After adding a **git** dependency: `dart run openssl:setup_prebuilts` (materializes LFS prebuilts).
 - Android: install NDK via Android Studio when building from source.
 - iOS: macOS host + Xcode when building from source.
 - If another plugin embeds OpenSSL, prefer one crypto stack to avoid duplicate symbols with static linking.
 
+### Git dependency (prebuilts)
+
+```yaml
+dependencies:
+  openssl:
+    git:
+      url: https://github.com/advforks/openssl-dart.git
+      ref: v1.2.3   # pin a tag or commit
+```
+
+```bash
+GIT_LFS_SKIP_SMUDGE=1 flutter pub get   # if LFS smudge fails during checkout
+dart run openssl:setup_prebuilts
+flutter run
+```
+
 ## Using the bindings
+
+Convenience helpers (no manual FFI) — `package:openssl/crypto.dart`:
+
+```dart
+import 'dart:typed_data';
+import 'package:openssl/crypto.dart';
+
+openSslLibcryptoVersion();                 // "3.5.4"
+toHex(sha256(bytes));                       // SHA-256 hex
+randomBytes(16);                            // CSPRNG
+aes256Cbc(plain, key, iv, encrypt: true);   // AES-256-CBC
+```
+
+Full C API — `package:openssl/openssl.dart`:
 
 ```dart
 import 'package:openssl/openssl.dart' as openssl;
 ```
 
-See [`example/main.dart`](example/main.dart) for AES-256-CBC. Follow OpenSSL docs for `OPENSSL_free`, `EVP_*_free`, etc.
+See [`example/main.dart`](example/main.dart) and [`docs/FLUTTER.md`](docs/FLUTTER.md). Follow OpenSSL docs for `OPENSSL_free`, `EVP_*_free`, etc.
 
 ## Prebuilt binaries (git clones only)
 

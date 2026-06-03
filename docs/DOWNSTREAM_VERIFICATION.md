@@ -10,7 +10,7 @@ The `openssl` package ships **prebuilt libcrypto only in git clones** (Git LFS u
 
 ## Verify checksums (recommended minimum)
 
-After `git lfs pull`, for each artifact you use:
+After `git lfs pull` or `dart run openssl:setup_prebuilts`, for each artifact you use:
 
 ```bash
 VERSION=$(cat native/src/VERSION)   # in the openssl package root under .pub-cache or path dep

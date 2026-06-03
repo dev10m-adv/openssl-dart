@@ -1,10 +1,14 @@
 name: openssl
 description: OpenSSL 3.5 libcrypto for Dart via FFI and Native Assets. Raw C API bindings (no libssl/TLS).
-version: 1.2.2
+version: 1.2.5
 repository: https://github.com/advforks/openssl-dart
 
 environment:
   sdk: ^3.10.1
+
+executables:
+  setup_prebuilts: setup_prebuilts
+  verify_prebuilts: verify_prebuilts
 
 platforms:
   android:

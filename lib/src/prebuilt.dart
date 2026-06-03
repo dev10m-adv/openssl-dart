@@ -29,9 +29,13 @@ Future<File?> findPrebuiltLibcrypto({
     return null;
   }
   if (candidate.lengthSync() < 4096) {
+    final hint = _looksLikeLfsPointer(candidate)
+        ? 'Git LFS pointer — run `dart run openssl:setup_prebuilts` or `git lfs pull` '
+            '(use GIT_LFS_SKIP_SMUDGE=1 during pub get if smudge fails)'
+        : 'file too small';
     print(
       'openssl: ignoring prebuilt at ${candidate.path} (${candidate.lengthSync()} bytes); '
-      'run `git lfs pull` or compile from source',
+      '$hint — will compile from source if the host toolchain allows',
     );
     return null;
   }
@@ -54,4 +58,14 @@ Future<File?> findPrebuiltLibcrypto({
   }
 
   return candidate;
+}
+
+bool _looksLikeLfsPointer(File file) {
+  try {
+    final bytes = file.readAsBytesSync();
+    if (bytes.length < 20) return false;
+    return String.fromCharCodes(bytes.take(32)).startsWith('version https://git-lfs');
+  } on Object {
+    return false;
+  }
 }

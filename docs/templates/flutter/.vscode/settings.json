@@ -1,0 +1,6 @@
+{
+  "terminal.integrated.env.windows": {
+    "CMAKE_TOOLCHAIN_FILE": "${workspaceFolder}/windows/cmake/community_vs.cmake",
+    "GIT_LFS_SKIP_SMUDGE": "1"
+  }
+}

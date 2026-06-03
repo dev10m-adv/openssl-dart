@@ -1,0 +1,17 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "openssl: bootstrap",
+      "type": "shell",
+      "command": "dart run openssl:setup_prebuilts",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "GIT_LFS_SKIP_SMUDGE": "1"
+        }
+      },
+      "problemMatcher": []
+    }
+  ]
+}

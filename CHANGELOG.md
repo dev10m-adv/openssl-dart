@@ -1,7 +1,22 @@
 ## Unreleased
 
-- Prebuilt integrity: per-version `manifest.json` with SHA-256 per artifact; optional Ed25519 `manifest.json.sig` (`tool/sign_prebuilts.dart`, `PREBUILT_SIGNING_PRIVATE_KEY`).
-- `OPENSSL_VERIFY_PREBUILTS=1` for strict hook verification; [docs/DOWNSTREAM_VERIFICATION.md](docs/DOWNSTREAM_VERIFICATION.md) for app teams.
+## 1.2.5
+
+- `package:openssl/crypto.dart` gains `sha256`, `sha512`, `toHex`, and `randomBytes` so app teams avoid manual FFI for common operations.
+- Sample app and `flutter_openssl` example showcase AES + SHA-256 + RAND.
+- Fixed deprecated `Pointer.elementAt` in `aes256Cbc` (uses `+`).
+
+## 1.2.4
+
+- `package:openssl/crypto.dart`: `aes256Cbc`, `openSslLibcryptoVersion()` for app teams.
+- [docs/SAMPLE_APP.md](docs/SAMPLE_APP.md) and expanded [docs/templates/flutter/](docs/templates/flutter/) (bootstrap scripts, VS Code, pubspec snippet).
+- Upgraded [example/flutter_openssl/](example/flutter_openssl/) with AES demo.
+
+## 1.2.3
+
+- Flutter DX: [docs/FLUTTER.md](docs/FLUTTER.md), published `dart run openssl:setup_prebuilts` / `openssl:verify_prebuilts` (`bin/`), Windows ARM64 CMake template.
+- Hook logs resolved prebuilt folder; clearer LFS pointer and compile-fallback messages.
+- `lib/src/prebuilt_verify.dart` shared by `tool/` and `bin/` verify CLIs.
 
 ## 1.2.2
 

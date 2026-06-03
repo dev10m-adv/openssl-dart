@@ -62,17 +62,18 @@ String? compileHostRequirement(OS hostOS, OS targetOS) {
   if (canCompileOnHost(hostOS, targetOS)) return null;
   if (targetOS == OS.android || targetOS == OS.iOS) {
     return 'Building OpenSSL for ${targetOS.name} requires a macOS or Linux host, '
-        'or use a prebuilt library under native/prebuilt/.';
+        'or use a git dependency with LFS prebuilts under native/prebuilt/.';
   }
   if (targetOS == OS.linux && hostOS == OS.windows) {
     return 'Building OpenSSL for Linux on a Windows host is not supported. '
-        'Use a prebuilt library under native/prebuilt/.';
+        'Use a git dependency with LFS prebuilts, or build on Linux/macOS.';
   }
   if (targetOS == OS.macOS && hostOS != OS.macOS) {
-    return 'Building OpenSSL for macOS requires a macOS host, or use a prebuilt library.';
+    return 'Building OpenSSL for macOS requires a macOS host, or use LFS prebuilts '
+        '(git dependency + `dart run openssl:setup_prebuilts`).';
   }
   if (targetOS == OS.windows && hostOS != OS.windows) {
-    return 'Building OpenSSL for Windows requires a Windows host with MSVC, or use a prebuilt library.';
+    return 'Building OpenSSL for Windows requires a Windows host with MSVC, or use LFS prebuilts.';
   }
   return 'Cannot compile OpenSSL for ${targetOS.name} on ${hostOS.name} host.';
 }
