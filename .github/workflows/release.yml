@@ -25,11 +25,21 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y perl make curl
 
       - name: Full repo health check
-        run: dart run tool/check_repo.dart
+        env:
+          NIX_OPENSSL_SKIP_NATIVE_HOOK: '1'
+          OPENSSL_SKIP_NATIVE_HOOK: '1'
+        run: |
+          TAG="openssl-$(tr -d '\r\n' < native/src/VERSION)"
+          git -C native/third_party/openssl fetch --depth=1 origin "refs/tags/${TAG}:refs/tags/${TAG}"
+          dart pub get --no-example
+          dart run tool/check_repo.dart
 
       - name: Analyze and test
+        env:
+          NIX_OPENSSL_SKIP_NATIVE_HOOK: '1'
+          OPENSSL_SKIP_NATIVE_HOOK: '1'
         run: |
-          dart pub get
+          dart pub get --no-example
           dart analyze
           dart test
 
