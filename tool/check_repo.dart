@@ -14,7 +14,11 @@ void main(List<String> args) async {
 
   for (final step in steps) {
     stdout.writeln('check_repo: ${step.name}');
-    final result = await Process.run('dart', ['run', ...step.args]);
+    final result = await Process.run(
+      'dart',
+      ['run', ...step.args],
+      environment: {...Platform.environment, 'OPENSSL_SKIP_NATIVE_HOOK': '1'},
+    );
     stdout.write(result.stdout);
     stderr.write(result.stderr);
     if (result.exitCode != 0) {

@@ -19,6 +19,10 @@ Map<String, String> environment = {};
 
 void main(List<String> args) async {
   await build(args, (input, output) async {
+    // Maintainer tools (`dart run tool/*.dart`) must not compile libcrypto.
+    if (Platform.environment['OPENSSL_SKIP_NATIVE_HOOK'] == '1') {
+      return;
+    }
     if (!input.config.buildCodeAssets) {
       return;
     }
