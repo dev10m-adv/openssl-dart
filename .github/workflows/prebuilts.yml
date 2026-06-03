@@ -16,6 +16,11 @@ on:
       - lib/src/prebuilt_attestation.dart
       - tool/check_repo.dart
   workflow_dispatch:
+    inputs:
+      force_rebuild:
+        description: Rebuild all triples even when hash matches and verify passes
+        type: boolean
+        default: false
 
 concurrency:
   group: prebuilts-${{ github.ref }}
@@ -56,8 +61,14 @@ jobs:
         id: compare
         env:
           OPENSSL_VERSION: ${{ steps.version.outputs.openssl_version }}
+          FORCE_REBUILD: ${{ github.event_name == 'workflow_dispatch' && inputs.force_rebuild }}
         run: |
           set -euo pipefail
+          if [ "$FORCE_REBUILD" = "true" ]; then
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+            echo "Force rebuild requested." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           COMPUTED="$(cat /tmp/computed-hash.txt)"
           HASH_FILE="native/prebuilt/${OPENSSL_VERSION}/.build-hash"
           STORED="missing"

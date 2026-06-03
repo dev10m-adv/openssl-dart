@@ -37,7 +37,7 @@ jobs:
           ## Bump checklist
           - [ ] Update \`native/src/VERSION\`
           - [ ] \`git submodule update --remote\` → tag \`openssl-$LATEST\`
-          - [ ] \`dart run tool/sync_manifest.dart\`
+          - [ ] \`dart run tool/sign_prebuilts.dart\`
           - [ ] \`dart run tool/ffigen.dart\` (if headers changed)
           - [ ] Run prebuilts workflow / merge PR
           - [ ] Remove old \`native/prebuilt/$CURRENT/\` if no longer needed

@@ -25,6 +25,7 @@ void main(List<String> args) async {
   }
 
   final failures = <String>[];
+  _rejectLegacyFlatLayout(packageRoot, failures);
   _verifyRootIndex(packageRoot, version, failures);
 
   final manifestFile = File.fromUri(versionManifestUri(packageRoot));
@@ -51,8 +52,10 @@ void main(List<String> args) async {
   for (final triple in requiredPrebuiltTriples) {
     final dir = Directory.fromUri(prebuiltDirUri(packageRoot, triple));
     if (!dir.existsSync()) {
-      if (allowPartial) {
-        stdout.writeln('verify_prebuilts: skip missing $version/$triple/ (partial)');
+      if (allowPartial || optionalPrebuiltTriples.contains(triple)) {
+        final reason =
+            optionalPrebuiltTriples.contains(triple) ? 'optional' : 'partial';
+        stdout.writeln('verify_prebuilts: skip missing $version/$triple/ ($reason)');
         continue;
       }
       failures.add('$version/$triple/ missing');
@@ -102,6 +105,19 @@ void main(List<String> args) async {
     stderr.writeln('  $line');
   }
   exit(1);
+}
+
+void _rejectLegacyFlatLayout(Uri packageRoot, List<String> failures) {
+  final prebuiltRootDir = Directory.fromUri(packageRoot.resolve(prebuiltRoot));
+  if (!prebuiltRootDir.existsSync()) return;
+  for (final triple in requiredPrebuiltTriples) {
+    final legacy = Directory('${prebuiltRootDir.path}/$triple');
+    if (legacy.existsSync()) {
+      failures.add(
+        'legacy layout $prebuiltRoot/$triple/ — remove; use $prebuiltRoot/<version>/$triple/',
+      );
+    }
+  }
 }
 
 void _verifyRootIndex(Uri packageRoot, String version, List<String> failures) {

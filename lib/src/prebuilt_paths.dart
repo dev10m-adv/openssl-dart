@@ -20,6 +20,9 @@ const requiredPrebuiltTriples = [
   'linux-arm64',
 ];
 
+/// Built when CI has a suitable runner; strict verify skips if absent.
+const optionalPrebuiltTriples = ['windows-arm64'];
+
 /// `native/prebuilt/<version>/`
 Uri prebuiltVersionRootUri(Uri packageRoot) {
   final version = readOpenSslVersion(packageRoot);
