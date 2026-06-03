@@ -184,7 +184,6 @@ jobs:
         env:
           TRIPLE: ${{ matrix.triple }}
           ANDROID_NDK_ROOT: ${{ env.ANDROID_NDK_HOME }}
-          PERL: C:\Strawberry\perl\bin\perl.exe
         run: |
           set -euo pipefail
           if [[ "${{ matrix.script }}" == *.ps1 ]]; then
