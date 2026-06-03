@@ -101,8 +101,15 @@ Map<String, dynamic> readVersionManifest(Uri packageRoot) {
   if (!file.existsSync()) {
     throw StateError('Missing ${file.path}');
   }
-  return jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
+  final body = file.readAsStringSync();
+  if (_isGitLfsPointer(body)) {
+    throw StateError('${file.path} is a Git LFS pointer (run git lfs pull)');
+  }
+  return jsonDecode(body) as Map<String, dynamic>;
 }
+
+bool _isGitLfsPointer(String text) =>
+    text.trimLeft().startsWith('version https://git-lfs.github.com/spec/v1');
 
 /// Verifies [file] matches [manifest] entry at [artifactRelativePath]. Returns error or null.
 String? verifyArtifactSha256({
@@ -190,7 +197,16 @@ Future<String?> verifyManifestSignature(Uri packageRoot) async {
     return 'manifest.json.sig present but $prebuiltSigningPublicKeyFile missing';
   }
   final manifestBytes = manifestFile.readAsBytesSync();
-  final sigBytes = base64Decode(sigFile.readAsStringSync().trim());
+  final sigText = sigFile.readAsStringSync().trim();
+  if (_isGitLfsPointer(sigText)) {
+    return '${sigFile.path} is a Git LFS pointer (run git lfs pull)';
+  }
+  List<int> sigBytes;
+  try {
+    sigBytes = base64Decode(sigText);
+  } on FormatException {
+    return '${sigFile.path} is not valid base64';
+  }
   final algorithm = Ed25519();
   final ok = await algorithm.verify(
     manifestBytes,

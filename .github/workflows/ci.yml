@@ -107,7 +107,9 @@ jobs:
 
       - name: Install Windows build deps
         if: runner.os == 'Windows'
-        run: choco install strawberryperl jom -y
+        run: |
+          choco install strawberryperl jom -y
+          Add-Content -Path $env:GITHUB_PATH -Value "C:\Strawberry\perl\bin"
 
       - name: pub get
         run: dart pub get
