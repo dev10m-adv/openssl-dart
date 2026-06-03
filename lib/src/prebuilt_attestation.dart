@@ -52,6 +52,25 @@ Map<String, File> collectVersionArtifacts(Directory versionRoot) {
   return artifacts;
 }
 
+/// True for paths that should be large LFS-backed libcrypto binaries (not headers).
+bool isPrebuiltBinaryArtifactPath(String relativePath) {
+  final name = relativePath.split('/').last;
+  if (name == '.build-hash' ||
+      name == 'manifest.json' ||
+      name == 'manifest.json.sig' ||
+      name == 'README.md') {
+    return false;
+  }
+  if (name.contains('libcrypto') &&
+      (name.endsWith('.dll') ||
+          name.endsWith('.so') ||
+          name.endsWith('.dylib') ||
+          name.endsWith('.a'))) {
+    return true;
+  }
+  return name == 'OpenSSL.xcframework' || name.endsWith('.xcframework');
+}
+
 bool _isLibcryptoArtifact(String name) {
   if (name.contains('libcrypto') &&
       (name.endsWith('.dll') ||

@@ -87,13 +87,11 @@ void main(List<String> args) async {
 
   for (final entity in versionRoot.listSync(recursive: true)) {
     if (entity is! File) continue;
-    final name = entity.uri.pathSegments.last;
-    if (name == versionManifestName ||
-        name == versionManifestSigName ||
-        name == '.build-hash' ||
-        name.endsWith('.md')) {
-      continue;
-    }
+    final relative = entity.path
+        .substring(versionRoot.path.length)
+        .replaceAll(r'\', '/')
+        .replaceFirst(RegExp(r'^/'), '');
+    if (!isPrebuiltBinaryArtifactPath(relative)) continue;
     if (entity.lengthSync() < 4096) {
       failures.add('${entity.path} (${entity.lengthSync()} bytes — run `git lfs pull`)');
     }
