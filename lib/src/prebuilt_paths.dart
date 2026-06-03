@@ -4,6 +4,7 @@ import 'package:code_assets/code_assets.dart';
 
 import 'build_target.dart';
 import 'native_version.dart';
+import 'prebuilt_attestation.dart';
 
 /// Root of committed prebuilt artifacts (Git LFS).
 const prebuiltRoot = 'native/prebuilt';
@@ -80,11 +81,18 @@ File? resolvePrebuiltArtifact({
   }
 
   final libName = resolveLibFileName(targetOS, architecture, linkMode);
-  final candidate = File('${prebuiltDir.path}/$libName');
-  if (!candidate.existsSync()) {
-    return null;
+  final exact = File('${prebuiltDir.path}/$libName');
+  if (exact.existsSync()) {
+    return _acceptPrebuiltFile(exact);
   }
-  return _acceptPrebuiltFile(candidate);
+  for (final entity in prebuiltDir.listSync()) {
+    if (entity is! File) continue;
+    final name = entity.uri.pathSegments.last;
+    if (isLibcryptoLibraryFileName(name)) {
+      return _acceptPrebuiltFile(entity);
+    }
+  }
+  return null;
 }
 
 File? _resolveIosPrebuilt(Directory prebuiltDir, IOSSdk? iosSdk) {
