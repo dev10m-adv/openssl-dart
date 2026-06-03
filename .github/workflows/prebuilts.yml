@@ -205,10 +205,7 @@ jobs:
   merge-commit:
     name: merge-prebuilts
     needs: [check-hash, build-prebuilts]
-    # Optional matrix legs use continue-on-error; merge when required builds succeeded.
-    if: >-
-      needs.check-hash.outputs.should_build == 'true' &&
-      (needs.build-prebuilts.result == 'success' || needs.build-prebuilts.result == 'failure')
+    if: needs.check-hash.outputs.should_build == 'true' && needs.build-prebuilts.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
