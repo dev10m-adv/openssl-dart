@@ -279,6 +279,8 @@ jobs:
           fi
 
       - name: Create Pull Request
+        id: create_pr
+        continue-on-error: true
         uses: peter-evans/create-pull-request@v7
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -292,3 +294,11 @@ jobs:
             - Review LFS file sizes before merge.
           add-paths: |
             native/prebuilt/
+
+      - name: Prebuilts branch ready (manual PR if needed)
+        if: steps.create_pr.outcome != 'success'
+        run: |
+          BRANCH="ci/prebuilts-${{ steps.version.outputs.openssl_version }}-${{ github.run_id }}"
+          echo "::warning::Actions could not open a PR (enable Settings → Actions → Allow GitHub Actions to create pull requests)."
+          echo "Branch pushed: ${BRANCH}"
+          echo "Open: https://github.com/${{ github.repository }}/compare/master...${BRANCH}?expand=1"
