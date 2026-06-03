@@ -17,7 +17,11 @@ void main(List<String> args) async {
     final result = await Process.run(
       'dart',
       ['run', ...step.args],
-      environment: {...Platform.environment, 'OPENSSL_SKIP_NATIVE_HOOK': '1'},
+      environment: {
+        ...Platform.environment,
+        'NIX_OPENSSL_SKIP_NATIVE_HOOK': '1',
+        'OPENSSL_SKIP_NATIVE_HOOK': '1',
+      },
     );
     stdout.write(result.stdout);
     stderr.write(result.stderr);

@@ -42,6 +42,7 @@ jobs:
 
       - name: Repo health (strict)
         env:
+          NIX_OPENSSL_SKIP_NATIVE_HOOK: '1'
           OPENSSL_SKIP_NATIVE_HOOK: '1'
         run: |
           TAG="openssl-$(tr -d '\r\n' < native/src/VERSION)"
@@ -63,6 +64,7 @@ jobs:
 
       - name: Check LFS smudged files
         env:
+          NIX_OPENSSL_SKIP_NATIVE_HOOK: '1'
           OPENSSL_SKIP_NATIVE_HOOK: '1'
         run: dart pub get --no-example && dart run tool/check_lfs_pointers.dart
 
@@ -82,6 +84,7 @@ jobs:
 
       - name: Manifest and submodule
         env:
+          NIX_OPENSSL_SKIP_NATIVE_HOOK: '1'
           OPENSSL_SKIP_NATIVE_HOOK: '1'
         run: |
           TAG="openssl-$(tr -d '\r\n' < native/src/VERSION)"
@@ -122,6 +125,7 @@ jobs:
 
       - name: Verify prebuilts (partial ok on PRs without full matrix)
         env:
+          NIX_OPENSSL_SKIP_NATIVE_HOOK: '1'
           OPENSSL_SKIP_NATIVE_HOOK: '1'
           PERL: ${{ runner.os == 'Windows' && 'C:\Strawberry\perl\bin\perl.exe' || '' }}
         run: dart run tool/verify_prebuilts.dart --allow-partial

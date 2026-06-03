@@ -80,19 +80,46 @@ File? resolvePrebuiltArtifact({
     return _resolveIosPrebuilt(prebuiltDir, iosSdk);
   }
 
+  final preferStatic =
+      linkMode == LinkModePreference.static || linkMode == LinkModePreference.preferStatic;
   final libName = resolveLibFileName(targetOS, architecture, linkMode);
   final exact = File('${prebuiltDir.path}/$libName');
   if (exact.existsSync()) {
     return _acceptPrebuiltFile(exact);
   }
+  File? fallback;
   for (final entity in prebuiltDir.listSync()) {
     if (entity is! File) continue;
     final name = entity.uri.pathSegments.last;
-    if (isLibcryptoLibraryFileName(name)) {
-      return _acceptPrebuiltFile(entity);
+    if (!isLibcryptoLibraryFileName(name)) continue;
+    if (!_matchesLinkModeFileName(name, preferStatic: preferStatic)) continue;
+    final accepted = _acceptPrebuiltFile(entity);
+    if (accepted == null) continue;
+    if (_isPreferredLibcryptoName(name, preferStatic: preferStatic)) {
+      return accepted;
     }
+    fallback ??= accepted;
   }
-  return null;
+  return fallback;
+}
+
+bool _matchesLinkModeFileName(String name, {required bool preferStatic}) {
+  if (preferStatic) {
+    return name.endsWith('.a') || name.endsWith('_static.lib');
+  }
+  return name.endsWith('.dll') ||
+      name.endsWith('.dylib') ||
+      RegExp(r'\.so(\.\d+)?$').hasMatch(name);
+}
+
+bool _isPreferredLibcryptoName(String name, {required bool preferStatic}) {
+  if (preferStatic) {
+    return name.endsWith('.a') || name.endsWith('_static.lib');
+  }
+  return name == 'libcrypto.so' ||
+      RegExp(r'^libcrypto\.so\.\d+$').hasMatch(name) ||
+      name.startsWith('libcrypto-') && name.endsWith('.dll') ||
+      name == 'libcrypto.dylib';
 }
 
 File? _resolveIosPrebuilt(Directory prebuiltDir, IOSSdk? iosSdk) {
@@ -108,14 +135,11 @@ File? _resolveIosPrebuilt(Directory prebuiltDir, IOSSdk? iosSdk) {
     if (accepted == null) continue;
 
     final pathLower = entity.path.toLowerCase();
-    if (isSimulator) {
-      if (pathLower.contains('simulator') || pathLower.contains('iphonesimulator')) {
-        return accepted;
-      }
-    } else {
-      if (!pathLower.contains('simulator') && !pathLower.contains('iphonesimulator')) {
-        return accepted;
-      }
+    final matchesSdk = isSimulator
+        ? pathLower.contains('simulator') || pathLower.contains('iphonesimulator')
+        : !pathLower.contains('simulator') && !pathLower.contains('iphonesimulator');
+    if (matchesSdk) {
+      return accepted;
     }
     fallback ??= accepted;
   }

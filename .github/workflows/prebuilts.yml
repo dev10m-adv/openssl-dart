@@ -60,11 +60,13 @@ jobs:
 
       - name: Validate submodule
         env:
+          NIX_OPENSSL_SKIP_NATIVE_HOOK: '1'
           OPENSSL_SKIP_NATIVE_HOOK: '1'
         run: dart run tool/check_submodule.dart
 
       - name: Compute build hash
         env:
+          NIX_OPENSSL_SKIP_NATIVE_HOOK: '1'
           OPENSSL_SKIP_NATIVE_HOOK: '1'
         run: dart run tool/compute_build_hash.dart /tmp/computed-hash.txt
 
@@ -93,7 +95,7 @@ jobs:
           echo "| computed | \`$COMPUTED\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| stored | \`$STORED\` |" >> "$GITHUB_STEP_SUMMARY"
           if [ "$COMPUTED" = "$STORED" ]; then
-            if OPENSSL_SKIP_NATIVE_HOOK=1 dart run tool/verify_prebuilts.dart; then
+            if NIX_OPENSSL_SKIP_NATIVE_HOOK=1 dart run tool/verify_prebuilts.dart; then
               echo "should_build=false" >> "$GITHUB_OUTPUT"
               echo "Prebuilts up to date; skipping matrix." >> "$GITHUB_STEP_SUMMARY"
               exit 0
@@ -256,15 +258,18 @@ jobs:
 
       - name: Sign manifest and update hash
         env:
+          NIX_OPENSSL_SKIP_NATIVE_HOOK: '1'
           OPENSSL_SKIP_NATIVE_HOOK: '1'
           PREBUILT_SIGNING_PRIVATE_KEY: ${{ secrets.PREBUILT_SIGNING_PRIVATE_KEY }}
         run: |
+          dart pub get --no-example
           dart run tool/sign_prebuilts.dart
           dart run tool/compute_build_hash.dart
           cat "native/prebuilt/$(tr -d '\r\n' < native/src/VERSION)/.build-hash"
 
       - name: Verify prebuilts
         env:
+          NIX_OPENSSL_SKIP_NATIVE_HOOK: '1'
           OPENSSL_SKIP_NATIVE_HOOK: '1'
         run: |
           if [ -n "${{ secrets.PREBUILT_SIGNING_PRIVATE_KEY }}" ]; then

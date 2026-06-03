@@ -17,13 +17,18 @@ const jomDownloadUrl = 'https://download.qt.io/official_releases/jom/jom_1_1_5.z
 
 Map<String, String> environment = {};
 
+/// Hooks run in a semi-hermetic env; only `NIX_*` (and a few others) are passed through.
+bool get _skipNativeHook =>
+    Platform.environment['NIX_OPENSSL_SKIP_NATIVE_HOOK'] == '1' ||
+    Platform.environment['OPENSSL_SKIP_NATIVE_HOOK'] == '1';
+
 void main(List<String> args) async {
   await build(args, (input, output) async {
-    // Maintainer tools (`dart run tool/*.dart`) must not compile libcrypto.
-    if (Platform.environment['OPENSSL_SKIP_NATIVE_HOOK'] == '1') {
+    if (!input.config.buildCodeAssets) {
       return;
     }
-    if (!input.config.buildCodeAssets) {
+    // Maintainer tools (`dart run tool/*.dart`) must not bundle libcrypto.
+    if (_skipNativeHook) {
       return;
     }
 
