@@ -1,4 +1,5 @@
 native/third_party/openssl
+docs/
 .vscode
 tool
 

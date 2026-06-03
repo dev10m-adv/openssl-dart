@@ -41,7 +41,11 @@ jobs:
           dart test
 
       - name: Pub publish dry run
-        run: dart pub publish --dry-run
+        run: |
+          # OpenSSL submodule is not published on pub.dev; drop it so `pub publish` validation passes.
+          rm -rf native/third_party/openssl
+          git rm -rf --cached native/third_party/openssl 2>/dev/null || true
+          dart pub publish --dry-run
 
       - name: Create GitHub Release
         env:
