@@ -18,25 +18,23 @@ void main() {
   final head = Process.runSync(
     'git',
     ['-C', submodule.path, 'rev-parse', 'HEAD'],
-    runInShell: Platform.isWindows,
   );
-  final tagRef = Process.runSync(
+  final tagCommit = Process.runSync(
     'git',
-    ['-C', submodule.path, 'rev-parse', expectedTag],
-    runInShell: Platform.isWindows,
+    ['-C', submodule.path, 'rev-parse', '${expectedTag}^{commit}'],
   );
-  if (tagRef.exitCode != 0) {
+  if (tagCommit.exitCode != 0) {
     stderr.writeln(
       'check_submodule: tag $expectedTag not found (run: git -C ${submodule.path} fetch --tags origin)',
     );
-    stderr.writeln((tagRef.stderr as String).trim());
+    stderr.writeln((tagCommit.stderr as String).trim());
     exit(1);
   }
 
   final headSha = (head.stdout as String).trim();
-  final tagSha = (tagRef.stdout as String).trim();
+  final tagSha = (tagCommit.stdout as String).trim();
   if (headSha != tagSha) {
-    stderr.writeln('check_submodule: HEAD $headSha != $expectedTag ($tagSha)');
+    stderr.writeln('check_submodule: HEAD $headSha != $expectedTag^{commit} ($tagSha)');
     exit(1);
   }
 
