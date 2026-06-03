@@ -52,6 +52,15 @@ Map<String, File> collectVersionArtifacts(Directory versionRoot) {
   return artifacts;
 }
 
+/// True for libcrypto shared/static library file names (e.g. libcrypto.so.3).
+bool isLibcryptoLibraryFileName(String name) {
+  if (!name.contains('libcrypto')) return false;
+  if (name.endsWith('.dll') || name.endsWith('.dylib') || name.endsWith('.a')) {
+    return true;
+  }
+  return RegExp(r'\.so(\.\d+)?$').hasMatch(name);
+}
+
 /// True for paths that should be large LFS-backed libcrypto binaries (not headers).
 bool isPrebuiltBinaryArtifactPath(String relativePath) {
   final name = relativePath.split('/').last;
@@ -61,24 +70,12 @@ bool isPrebuiltBinaryArtifactPath(String relativePath) {
       name == 'README.md') {
     return false;
   }
-  if (name.contains('libcrypto') &&
-      (name.endsWith('.dll') ||
-          name.endsWith('.so') ||
-          name.endsWith('.dylib') ||
-          name.endsWith('.a'))) {
-    return true;
-  }
+  if (isLibcryptoLibraryFileName(name)) return true;
   return name == 'OpenSSL.xcframework' || name.endsWith('.xcframework');
 }
 
 bool _isLibcryptoArtifact(String name) {
-  if (name.contains('libcrypto') &&
-      (name.endsWith('.dll') ||
-          name.endsWith('.so') ||
-          name.endsWith('.dylib') ||
-          name.endsWith('.a'))) {
-    return true;
-  }
+  if (isLibcryptoLibraryFileName(name)) return true;
   return name == 'OpenSSL.xcframework' || name.endsWith('.xcframework');
 }
 

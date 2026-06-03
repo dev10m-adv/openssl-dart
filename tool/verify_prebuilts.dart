@@ -177,15 +177,11 @@ Future<void> _verifySharedLibrary(
   String triple,
   bool hasManifest,
 ) async {
-  final patterns = switch (triple) {
-    'windows-x64' || 'windows-arm64' => ['libcrypto', '.dll'],
-    'macos-universal' => ['libcrypto', '.dylib'],
-    _ => ['libcrypto', '.so'],
-  };
   var ok = false;
   for (final entity in dir.listSync()) {
     if (entity is! File) continue;
-    if (entity.path.contains(patterns[0]) && entity.path.endsWith(patterns[1])) {
+    final name = entity.uri.pathSegments.last;
+    if (isLibcryptoLibraryFileName(name)) {
       if (entity.lengthSync() >= 4096) {
         ok = true;
         if (hasManifest) {
