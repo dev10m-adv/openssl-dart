@@ -16,7 +16,8 @@ void main() {
 
   bool allowPublic(Declaration decl) => includeDeclaration(decl.originalName);
 
-  for (final entry in Directory(opensslPublic.path).listSync(recursive: true)) {
+  final opensslPublicDir = Directory.fromUri(opensslPublic);
+  for (final entry in opensslPublicDir.listSync(recursive: true)) {
     if (entry.path.endsWith('.h') && !isExcludedHeader(entry.path)) {
       headers.add(entry.uri);
     }
