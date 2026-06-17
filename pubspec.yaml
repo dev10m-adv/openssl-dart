@@ -9,6 +9,7 @@ environment:
 executables:
   setup_prebuilts: setup_prebuilts
   verify_prebuilts: verify_prebuilts
+  bootstrap_native: bootstrap_native
 
 platforms:
   android:

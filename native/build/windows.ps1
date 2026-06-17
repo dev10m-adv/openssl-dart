@@ -40,6 +40,8 @@ function Ensure-OpenSslSrc {
 }
 
 function Resolve-PerlExe {
+  param([string]$ToolsDir)
+
   if ($env:PERL -and (Test-Path -LiteralPath $env:PERL)) {
     return $env:PERL
   }
@@ -53,7 +55,41 @@ function Resolve-PerlExe {
   if ($cmd -and $cmd.Source -notmatch '\\Git\\') {
     return $cmd.Source
   }
-  throw 'Strawberry Perl not found (install: choco install strawberryperl)'
+
+  New-Item -ItemType Directory -Force -Path $ToolsDir | Out-Null
+  $perlExe = Join-Path $ToolsDir 'perl\perl\bin\perl.exe'
+  if (-not (Test-Path -LiteralPath $perlExe)) {
+    $perlZip = Join-Path $ToolsDir 'perl.zip'
+    $perlUrl = 'https://github.com/StrawberryPerl/Perl-Dist-Strawberry/releases/download/SP_54021_64bit_UCRT/strawberry-perl-5.40.2.1-64bit-portable.zip'
+    Write-Host "Downloading portable Strawberry Perl..."
+    curl.exe -L $perlUrl -o $perlZip
+    tar -xf $perlZip -C (Join-Path $ToolsDir 'perl')
+    Remove-Item $perlZip -Force -ErrorAction SilentlyContinue
+  }
+  if (-not (Test-Path -LiteralPath $perlExe)) {
+    throw "perl not found at $perlExe after download"
+  }
+  return $perlExe
+}
+
+function Ensure-JomOnPath {
+  param([string]$ToolsDir)
+
+  if (Get-Command jom -ErrorAction SilentlyContinue) { return }
+  New-Item -ItemType Directory -Force -Path $ToolsDir | Out-Null
+  $jomExe = Join-Path $ToolsDir 'jom\jom.exe'
+  if (-not (Test-Path -LiteralPath $jomExe)) {
+    $jomZip = Join-Path $ToolsDir 'jom.zip'
+    $jomUrl = 'https://download.qt.io/official_releases/jom/jom_1_1_5.zip'
+    Write-Host "Downloading jom..."
+    curl.exe -L $jomUrl -o $jomZip
+    tar -xf $jomZip -C (Join-Path $ToolsDir 'jom')
+    Remove-Item $jomZip -Force -ErrorAction SilentlyContinue
+  }
+  if (-not (Test-Path -LiteralPath $jomExe)) {
+    throw "jom not found at $jomExe after download"
+  }
+  $env:PATH = "$(Split-Path -Parent $jomExe);$env:PATH"
 }
 
 function Get-VcVarsEnv([string]$Arch) {
@@ -80,7 +116,9 @@ $arch = if ($Triple -eq 'windows-arm64') { 'arm64' } else { 'x64' }
 $vcEnv = Get-VcVarsEnv $arch
 foreach ($k in $vcEnv.Keys) { Set-Item -Path "env:$k" -Value $vcEnv[$k] }
 
-$perl = Resolve-PerlExe
+$toolsDir = Join-Path $RepoRoot 'native\out\_bootstrap-tools'
+$perl = Resolve-PerlExe -ToolsDir $toolsDir
+Ensure-JomOnPath -ToolsDir $toolsDir
 Write-Host "Using perl: $perl"
 
 Push-Location $src

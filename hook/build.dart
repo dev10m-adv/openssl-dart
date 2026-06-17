@@ -248,12 +248,12 @@ Future<_ToolResolution> _resolveWindowsPerl(Uri workDir) async {
     }
   }
   final onPath = await _whereExecutable('perl');
-  if (onPath != null) {
+  if (onPath != null && !_isGitBashPerl(onPath)) {
     return _ToolResolution(path: onPath, downloaded: false);
   }
 
-  final perlUrl = _isWindowsArm64Host ? perlDownloadUrlModern : perlDownloadUrlLegacy;
-  await downloadAndExtract(perlUrl, 'perl.zip', workDir);
+  // GitHub mirror — strawberryperl.com is often blocked or unreachable on corporate networks.
+  await downloadAndExtract(perlDownloadUrlModern, 'perl.zip', workDir);
   final downloaded = workDir.resolve('./perl/perl/bin/perl.exe').toFilePath(windows: true);
   if (!File(downloaded).existsSync()) {
     throw StateError('perl not found at $downloaded after bootstrap');
@@ -274,6 +274,9 @@ Future<_ToolResolution> _resolveWindowsJom(Uri workDir) async {
   return _ToolResolution(path: downloaded, downloaded: true);
 }
 
+bool _isGitBashPerl(String path) =>
+    path.replaceAll('/', r'\').toLowerCase().contains(r'\git\');
+
 Future<String?> _whereExecutable(String name) async {
   if (!Platform.isWindows) return null;
   final result = await Process.run('where', [name], runInShell: true);
@@ -281,7 +284,9 @@ Future<String?> _whereExecutable(String name) async {
   for (final line in (result.stdout as String).split(RegExp(r'\r?\n'))) {
     final path = line.trim();
     if (path.isEmpty) continue;
-    if (File(path).existsSync()) return path;
+    if (!File(path).existsSync()) continue;
+    if (name == 'perl' && _isGitBashPerl(path)) continue;
+    return path;
   }
   return null;
 }
