@@ -1,17 +1,36 @@
 import 'dart:io';
 
+import 'host_build_plan.dart';
+import 'native_version.dart';
 import 'package_locator.dart';
 import 'prebuilt_attestation.dart';
 import 'prebuilt_paths.dart';
 import 'setup_prebuilts.dart';
 
-/// Builds or refreshes host prebuilt libcrypto under [native/prebuilt/].
-///
-/// Use after `pub get` when LFS prebuilts are absent (typical git dependency).
+enum _TripleOutcome { ok, skipped, failed, alreadyPresent }
+
+class _TripleResult {
+  _TripleResult({
+    required this.triple,
+    required this.outcome,
+    this.detail,
+    this.artifactPath,
+    this.artifactBytes,
+  });
+
+  final String triple;
+  final _TripleOutcome outcome;
+  final String? detail;
+  final String? artifactPath;
+  final int? artifactBytes;
+}
+
+/// Builds or refreshes prebuilt libcrypto under [native/prebuilt/].
 Future<int> runBootstrapNative(List<String> args) async {
   String? explicitPath;
   final triples = <String>[];
   var skipLfs = false;
+  var buildAll = false;
 
   for (var i = 0; i < args.length; i++) {
     final arg = args[i];
@@ -23,6 +42,8 @@ Future<int> runBootstrapNative(List<String> args) async {
       triples.add(arg.substring('--triple='.length));
     } else if (arg == '--skip-lfs') {
       skipLfs = true;
+    } else if (arg == '--all') {
+      buildAll = true;
     } else if (arg == '--help' || arg == '-h') {
       _printUsage();
       return 0;
@@ -30,7 +51,7 @@ Future<int> runBootstrapNative(List<String> args) async {
   }
 
   final packageRoot = await locateOpenSslPackageRoot(explicitPath: explicitPath);
-  stdout.writeln('openssl package root: ${packageRoot.path}');
+  final version = readOpenSslVersion(packageRoot.uri);
 
   if (!skipLfs) {
     final lfsCode = await runSetupPrebuilts(
@@ -41,84 +62,220 @@ Future<int> runBootstrapNative(List<String> args) async {
     }
   }
 
-  final targets = triples.isEmpty ? [_defaultHostTriple()] : triples;
+  final plan = buildAll ? planAllNativeBuilds() : null;
+  final targets = triples.isNotEmpty
+      ? triples
+      : buildAll
+          ? buildableTriplesOnHost()
+          : [defaultHostTriple()];
+
+  _printStartBanner(
+    packageRoot: packageRoot.path,
+    version: version,
+    buildAll: buildAll,
+    plan: plan,
+    targets: targets,
+  );
+
+  final results = <_TripleResult>[];
   for (final triple in targets) {
-    if (hasPrebuiltForTriple(packageRoot.uri, triple)) {
-      stdout.writeln('bootstrap_native: prebuilt ok for $triple');
+    final entry = planTriple(triple);
+    if (!entry.buildable) {
+      results.add(_TripleResult(
+        triple: triple,
+        outcome: _TripleOutcome.skipped,
+        detail: entry.skipReason,
+      ));
+      stdout.writeln('[skip] $triple — ${entry.skipReason}');
       continue;
     }
-    stdout.writeln('bootstrap_native: building prebuilt for $triple ...');
+
+    if (hasPrebuiltForTriple(packageRoot.uri, triple)) {
+      final artifact = _findPrebuiltArtifact(packageRoot.uri, triple);
+      results.add(_TripleResult(
+        triple: triple,
+        outcome: _TripleOutcome.alreadyPresent,
+        artifactPath: artifact?.$1,
+        artifactBytes: artifact?.$2,
+      ));
+      stdout.writeln('[ok]   $triple — already present');
+      continue;
+    }
+
+    stdout.writeln('[build] $triple ...');
     try {
       await _buildPrebuilt(packageRoot.uri, triple);
+      if (!hasPrebuiltForTriple(packageRoot.uri, triple)) {
+        throw StateError('libcrypto artifact missing after build');
+      }
+      final artifact = _findPrebuiltArtifact(packageRoot.uri, triple);
+      results.add(_TripleResult(
+        triple: triple,
+        outcome: _TripleOutcome.ok,
+        artifactPath: artifact?.$1,
+        artifactBytes: artifact?.$2,
+      ));
+      stdout.writeln('[ok]   $triple — built');
     } on Object catch (e) {
-      stderr.writeln('bootstrap_native: build failed for $triple: $e');
-      return 1;
+      results.add(_TripleResult(
+        triple: triple,
+        outcome: _TripleOutcome.failed,
+        detail: '$e',
+      ));
+      stderr.writeln('[fail] $triple — $e');
     }
-    if (!hasPrebuiltForTriple(packageRoot.uri, triple)) {
-      stderr.writeln('bootstrap_native: no libcrypto artifact after build ($triple)');
-      return 1;
-    }
-    stdout.writeln('bootstrap_native: built $triple');
   }
 
+  if (buildAll && plan != null) {
+    for (final entry in plan) {
+      if (entry.buildable) continue;
+      if (results.any((r) => r.triple == entry.triple)) continue;
+      results.add(_TripleResult(
+        triple: entry.triple,
+        outcome: _TripleOutcome.skipped,
+        detail: entry.skipReason,
+      ));
+    }
+  }
+
+  await _writeReport(packageRoot.uri, version, results);
+  _printSummary(results);
+
+  final hostTriple = defaultHostTriple();
+  final hostReady = results.any(
+    (r) => r.triple == hostTriple && (r.outcome == _TripleOutcome.ok || r.outcome == _TripleOutcome.alreadyPresent),
+  );
+  if (!hostReady) {
+    stderr.writeln('bootstrap_native: required host triple $hostTriple is not ready.');
+    return 1;
+  }
   return 0;
 }
 
 /// Returns true when [triple] has a smudged libcrypto shared library under prebuilt/.
 bool hasPrebuiltForTriple(Uri packageRoot, String triple) {
+  return _findPrebuiltArtifact(packageRoot, triple) != null;
+}
+
+(String path, int bytes)? _findPrebuiltArtifact(Uri packageRoot, String triple) {
   if (triple == 'ios-xcframework') {
     final dir = Directory.fromUri(prebuiltDirUri(packageRoot, triple));
-    if (!dir.existsSync()) return false;
+    if (!dir.existsSync()) return null;
     for (final entity in dir.listSync(recursive: true)) {
       if (entity is! File) continue;
       if (!entity.path.endsWith('libcrypto.dylib') && !entity.path.endsWith('libcrypto.a')) {
         continue;
       }
-      if (entity.lengthSync() >= 4096) return true;
+      if (entity.lengthSync() >= 4096) {
+        return (entity.path, entity.lengthSync());
+      }
     }
-    return false;
+    return null;
   }
 
   final dir = Directory.fromUri(prebuiltDirUri(packageRoot, triple));
-  if (!dir.existsSync()) return false;
+  if (!dir.existsSync()) return null;
   for (final entity in dir.listSync()) {
     if (entity is! File) continue;
     final name = entity.uri.pathSegments.last;
     if (!isLibcryptoLibraryFileName(name)) continue;
-    if (entity.lengthSync() >= 4096) return true;
-  }
-  return false;
-}
-
-String _defaultHostTriple() {
-  if (Platform.isWindows) {
-    final arch = (Platform.environment['PROCESSOR_ARCHITECTURE'] ?? '').toUpperCase();
-    return arch.contains('ARM64') ? 'windows-arm64' : 'windows-x64';
-  }
-  if (Platform.isLinux) {
-    final machine = Platform.environment['PROCESSOR_ARCHITECTURE'] ??
-        _unameMachine() ??
-        'x86_64';
-    return machine.toLowerCase().contains('aarch64') || machine.toLowerCase().contains('arm64')
-        ? 'linux-arm64'
-        : 'linux-x64';
-  }
-  if (Platform.isMacOS) {
-    return 'macos-universal';
-  }
-  throw UnsupportedError('bootstrap_native: unsupported host OS ${Platform.operatingSystem}');
-}
-
-String? _unameMachine() {
-  try {
-    final result = Process.runSync('uname', ['-m']);
-    if (result.exitCode == 0) {
-      return (result.stdout as String).trim();
+    if (entity.lengthSync() >= 4096) {
+      return (entity.path, entity.lengthSync());
     }
-  } on Object {
-    // ignore
   }
   return null;
+}
+
+void _printStartBanner({
+  required String packageRoot,
+  required String version,
+  required bool buildAll,
+  required List<NativeBuildPlanEntry>? plan,
+  required List<String> targets,
+}) {
+  stdout.writeln('');
+  stdout.writeln('=== OpenSSL native prebuilt bootstrap ===');
+  stdout.writeln('Package : $packageRoot');
+  stdout.writeln('Version : $version');
+  stdout.writeln('Host    : ${Platform.operatingSystem} (${defaultHostTriple()})');
+  stdout.writeln('Mode    : ${buildAll ? 'build all triples possible on this host' : 'host triple only'}');
+  stdout.writeln('');
+  if (buildAll && plan != null) {
+    stdout.writeln('Plan:');
+    for (final entry in plan) {
+      if (entry.buildable) {
+        stdout.writeln('  [build]  ${entry.triple}');
+      } else {
+        stdout.writeln('  [skip]   ${entry.triple} — ${entry.skipReason}');
+      }
+    }
+    stdout.writeln('');
+  } else {
+    stdout.writeln('Targets: ${targets.join(', ')}');
+    stdout.writeln('');
+  }
+}
+
+void _printSummary(List<_TripleResult> results) {
+  stdout.writeln('');
+  stdout.writeln('=== Native prebuilt summary ===');
+  var built = 0;
+  var present = 0;
+  var skipped = 0;
+  var failed = 0;
+
+  for (final r in results) {
+    switch (r.outcome) {
+      case _TripleOutcome.ok:
+        built++;
+        final size = r.artifactBytes != null ? _formatBytes(r.artifactBytes!) : '?';
+        stdout.writeln('  OK       ${r.triple}  ${r.artifactPath ?? ''} ($size)');
+      case _TripleOutcome.alreadyPresent:
+        present++;
+        final size = r.artifactBytes != null ? _formatBytes(r.artifactBytes!) : '?';
+        stdout.writeln('  CACHED   ${r.triple}  ${r.artifactPath ?? ''} ($size)');
+      case _TripleOutcome.skipped:
+        skipped++;
+        stdout.writeln('  SKIPPED  ${r.triple}  ${r.detail ?? ''}');
+      case _TripleOutcome.failed:
+        failed++;
+        stdout.writeln('  FAILED   ${r.triple}  ${r.detail ?? ''}');
+    }
+  }
+
+  stdout.writeln('');
+  stdout.writeln(
+    'Saved $built new, $present cached, $skipped skipped (other host), $failed failed.',
+  );
+  stdout.writeln('=== done ===');
+  stdout.writeln('');
+}
+
+Future<void> _writeReport(Uri packageRoot, String version, List<_TripleResult> results) async {
+  final reportDir = packageRoot.resolve('native/out/');
+  await Directory.fromUri(reportDir).create(recursive: true);
+  final reportFile = File.fromUri(reportDir.resolve('bootstrap-report.txt'));
+  final buffer = StringBuffer()
+    ..writeln('OpenSSL native prebuilt bootstrap report')
+    ..writeln('Version: $version')
+    ..writeln('Host: ${Platform.operatingSystem}')
+    ..writeln('Time: ${DateTime.now().toIso8601String()}')
+    ..writeln('');
+  for (final r in results) {
+    buffer.writeln('${r.outcome.name.toUpperCase()}  ${r.triple}  ${r.detail ?? r.artifactPath ?? ''}');
+  }
+  await reportFile.writeAsString(buffer.toString());
+  stdout.writeln('Report saved: ${reportFile.path}');
+}
+
+String _formatBytes(int bytes) {
+  if (bytes >= 1024 * 1024) {
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+  if (bytes >= 1024) {
+    return '${(bytes / 1024).toStringAsFixed(1)} KB';
+  }
+  return '$bytes B';
 }
 
 Future<void> _buildPrebuilt(Uri packageRoot, String triple) async {
@@ -167,12 +324,27 @@ Future<void> _buildPrebuilt(Uri packageRoot, String triple) async {
       );
       return;
     }
+    if (triple.startsWith('linux-')) {
+      await _runScript(
+        'bash',
+        [buildDir.resolve('linux.sh').toFilePath()],
+        packageRoot,
+        environment: {'TRIPLE': triple},
+      );
+      return;
+    }
+    if (triple.startsWith('android-')) {
+      await _runScript(
+        'bash',
+        [buildDir.resolve('android.sh').toFilePath()],
+        packageRoot,
+        environment: {'TRIPLE': triple},
+      );
+      return;
+    }
   }
 
-  throw UnsupportedError(
-    'Cannot build $triple on ${Platform.operatingSystem} host. '
-    'Use CI release artifacts or a matching host.',
-  );
+  throw UnsupportedError('Cannot build $triple on ${Platform.operatingSystem} host.');
 }
 
 Future<String> _resolvePwsh() async {
@@ -216,10 +388,11 @@ void _printUsage() {
 Build local libcrypto prebuilts for the openssl package (no git commit required).
 
 Usage:
-  dart run openssl:bootstrap_native [--path=<package-root>] [--triple=<name>] [--skip-lfs]
+  dart run openssl:bootstrap_native [--all] [--path=<package-root>] [--triple=<name>] [--skip-lfs]
 
-Defaults to the host triple (e.g. windows-x64). Run from your app after pub get.
+  --all       Build every triple this host can compile; skip others with a log line.
+  --triple    Build one triple (repeatable via multiple --triple flags).
 
-Tip: set OPENSSL_SKIP_NATIVE_HOOK=1 while running openssl tooling to avoid hook compile during pub.
+Run from your app after pub get. Set OPENSSL_SKIP_NATIVE_HOOK=1 during openssl tooling.
 ''');
 }
