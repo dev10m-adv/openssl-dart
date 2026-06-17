@@ -16,7 +16,17 @@ esac
 ANDROID_NDK_ROOT="${ANDROID_NDK_ROOT:-${ANDROID_NDK_HOME:-}}"
 : "${ANDROID_NDK_ROOT:?ANDROID_NDK_ROOT or ANDROID_NDK_HOME required}"
 export ANDROID_NDK_HOME="${ANDROID_NDK_ROOT}"
-HOST_TAG="$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m)"
+
+if [[ -n "${OPENSSL_NDK_HOST_TAG:-}" ]]; then
+  HOST_TAG="${OPENSSL_NDK_HOST_TAG}"
+else
+  HOST_TAG="$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m)"
+  case "${HOST_TAG}" in
+    mingw*|msys*|cygwin*|windows*)
+      HOST_TAG="windows-x86_64"
+      ;;
+  esac
+fi
 TOOLCHAIN_BIN="${ANDROID_NDK_ROOT}/toolchains/llvm/prebuilt/${HOST_TAG}/bin"
 export PATH="${TOOLCHAIN_BIN}:${PATH}"
 

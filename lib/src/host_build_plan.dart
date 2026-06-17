@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:code_assets/code_assets.dart';
 
 import 'build_target.dart';
+import 'ndk_locator.dart';
 import 'prebuilt_paths.dart';
 
 /// One row in the native prebuilt build plan for the current host.
@@ -47,19 +48,46 @@ NativeBuildPlanEntry planTriple(String triple) {
 
   final hostOS = OS.current;
   if (hostOS == OS.windows) {
-    if (triple == 'windows-x64' || triple == 'windows-arm64') {
+    if (triple == 'windows-x64') {
       return NativeBuildPlanEntry(triple: triple, buildable: true);
     }
+    if (triple == 'windows-arm64') {
+      final onArm64 =
+          (Platform.environment['PROCESSOR_ARCHITECTURE'] ?? '').toUpperCase().contains('ARM64');
+      if (onArm64) {
+        return NativeBuildPlanEntry(triple: triple, buildable: true);
+      }
+      return NativeBuildPlanEntry(
+        triple: triple,
+        buildable: false,
+        skipReason: 'Requires Windows on ARM64 host (use CI prebuilts on x64)',
+      );
+    }
+    if (triple.startsWith('android-')) {
+      if (hasAndroidNdkInstalled()) {
+        return NativeBuildPlanEntry(triple: triple, buildable: true);
+      }
+      return NativeBuildPlanEntry(
+        triple: triple,
+        buildable: false,
+        skipReason: 'Install Android NDK (Android Studio SDK Manager) or set ANDROID_NDK_ROOT',
+      );
+    }
+    return NativeBuildPlanEntry(
+      triple: triple,
+      buildable: false,
+      skipReason: _shortSkipReason(triple),
+    );
   }
 
   if (hostOS == OS.linux) {
     if (triple.startsWith('linux-')) {
       return NativeBuildPlanEntry(triple: triple, buildable: true);
     }
-    if (triple.startsWith('android-') && _hasAndroidNdk()) {
-      return NativeBuildPlanEntry(triple: triple, buildable: true);
-    }
     if (triple.startsWith('android-')) {
+      if (hasAndroidNdkInstalled()) {
+        return NativeBuildPlanEntry(triple: triple, buildable: true);
+      }
       return NativeBuildPlanEntry(
         triple: triple,
         buildable: false,
@@ -75,10 +103,10 @@ NativeBuildPlanEntry planTriple(String triple) {
     if (triple.startsWith('linux-')) {
       return NativeBuildPlanEntry(triple: triple, buildable: true);
     }
-    if (triple.startsWith('android-') && _hasAndroidNdk()) {
-      return NativeBuildPlanEntry(triple: triple, buildable: true);
-    }
     if (triple.startsWith('android-')) {
+      if (hasAndroidNdkInstalled()) {
+        return NativeBuildPlanEntry(triple: triple, buildable: true);
+      }
       return NativeBuildPlanEntry(
         triple: triple,
         buildable: false,
@@ -91,8 +119,19 @@ NativeBuildPlanEntry planTriple(String triple) {
   return NativeBuildPlanEntry(
     triple: triple,
     buildable: false,
-    skipReason: requirement ?? 'Not buildable on ${hostOS.name} host',
+    skipReason: _shortSkipReason(triple, fallback: requirement),
   );
+}
+
+String _shortSkipReason(String triple, {String? fallback}) {
+  if (triple.startsWith('android-')) {
+    return 'Install Android NDK (Android Studio) or set ANDROID_NDK_ROOT';
+  }
+  if (triple.startsWith('linux-')) return 'Requires Linux or macOS host';
+  if (triple == 'macos-universal') return 'Requires macOS host';
+  if (triple == 'ios-xcframework') return 'Requires macOS host + Xcode';
+  if (triple.startsWith('windows-')) return 'Requires Windows host with MSVC';
+  return fallback ?? 'Not buildable on this host';
 }
 
 /// Build plan for every known triple on the current host.
@@ -124,23 +163,6 @@ String defaultHostTriple() {
     return 'macos-universal';
   }
   throw UnsupportedError('Unsupported host OS: ${Platform.operatingSystem}');
-}
-
-bool _hasAndroidNdk() {
-  for (final key in ['ANDROID_NDK_ROOT', 'ANDROID_NDK_HOME']) {
-    final value = Platform.environment[key];
-    if (value != null && value.isNotEmpty && Directory(value).existsSync()) {
-      return true;
-    }
-  }
-  const defaults = [
-    r'C:\Android\android-ndk-r27c',
-    r'C:\Android\Sdk\ndk\27.0.12077973',
-  ];
-  for (final path in defaults) {
-    if (Directory(path).existsSync()) return true;
-  }
-  return false;
 }
 
 String? _unameMachine() {

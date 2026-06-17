@@ -31,6 +31,7 @@ Future<int> runBootstrapNative(List<String> args) async {
   final triples = <String>[];
   var skipLfs = false;
   var buildAll = false;
+  var verbose = Platform.environment['OPENSSL_BOOTSTRAP_VERBOSE'] == '1';
 
   for (var i = 0; i < args.length; i++) {
     final arg = args[i];
@@ -44,6 +45,8 @@ Future<int> runBootstrapNative(List<String> args) async {
       skipLfs = true;
     } else if (arg == '--all') {
       buildAll = true;
+    } else if (arg == '--verbose') {
+      verbose = true;
     } else if (arg == '--help' || arg == '-h') {
       _printUsage();
       return 0;
@@ -103,8 +106,14 @@ Future<int> runBootstrapNative(List<String> args) async {
     }
 
     stdout.writeln('[build] $triple ...');
+    if (verbose) {
+      stdout.writeln('       (verbose: compiler output below)');
+    } else {
+      stdout.writeln('       (quiet: ~5-10 min; full log in native/out/build-$triple.log)');
+    }
+    stdout.writeln('');
     try {
-      await _buildPrebuilt(packageRoot.uri, triple);
+      await _buildPrebuilt(packageRoot.uri, triple, verbose: verbose);
       if (!hasPrebuiltForTriple(packageRoot.uri, triple)) {
         throw StateError('libcrypto artifact missing after build');
       }
@@ -206,7 +215,7 @@ void _printStartBanner({
       if (entry.buildable) {
         stdout.writeln('  [build]  ${entry.triple}');
       } else {
-        stdout.writeln('  [skip]   ${entry.triple} — ${entry.skipReason}');
+        stdout.writeln('  [skip]   ${entry.triple} - ${entry.skipReason}');
       }
     }
     stdout.writeln('');
@@ -278,19 +287,38 @@ String _formatBytes(int bytes) {
   return '$bytes B';
 }
 
-Future<void> _buildPrebuilt(Uri packageRoot, String triple) async {
+Future<void> _buildPrebuilt(Uri packageRoot, String triple, {required bool verbose}) async {
   final buildDir = packageRoot.resolve('native/build/');
   if (Platform.isWindows) {
-    if (!(triple == 'windows-x64' || triple == 'windows-arm64')) {
-      throw UnsupportedError('Windows host can only build windows-x64 or windows-arm64');
+    if (triple == 'windows-x64' || triple == 'windows-arm64') {
+      final script = buildDir.resolve('windows.ps1').toFilePath(windows: true);
+      final pwsh = await _resolvePwsh();
+      final args = <String>[
+        if (pwsh == 'powershell') ...['-NoProfile', '-ExecutionPolicy', 'Bypass'],
+        '-File',
+        script,
+        '-Triple',
+        triple,
+        if (!verbose) '-Quiet',
+      ];
+      await _runScript(pwsh, args, packageRoot, verbose: verbose);
+      return;
     }
-    final script = buildDir.resolve('windows.ps1').toFilePath(windows: true);
-    final pwsh = await _resolvePwsh();
-    final args = pwsh == 'powershell'
-        ? ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script, '-Triple', triple]
-        : ['-File', script, '-Triple', triple];
-    await _runScript(pwsh, args, packageRoot);
-    return;
+    if (triple.startsWith('android-')) {
+      final script = buildDir.resolve('android.ps1').toFilePath(windows: true);
+      final pwsh = await _resolvePwsh();
+      final args = <String>[
+        if (pwsh == 'powershell') ...['-NoProfile', '-ExecutionPolicy', 'Bypass'],
+        '-File',
+        script,
+        '-Triple',
+        triple,
+        if (!verbose) '-Quiet',
+      ];
+      await _runScript(pwsh, args, packageRoot, verbose: verbose);
+      return;
+    }
+    throw UnsupportedError('Cannot build $triple on Windows host.');
   }
 
   if (Platform.isLinux) {
@@ -300,6 +328,7 @@ Future<void> _buildPrebuilt(Uri packageRoot, String triple) async {
         [buildDir.resolve('linux.sh').toFilePath()],
         packageRoot,
         environment: {'TRIPLE': triple},
+        verbose: verbose,
       );
       return;
     }
@@ -309,6 +338,7 @@ Future<void> _buildPrebuilt(Uri packageRoot, String triple) async {
         [buildDir.resolve('android.sh').toFilePath()],
         packageRoot,
         environment: {'TRIPLE': triple},
+        verbose: verbose,
       );
       return;
     }
@@ -321,6 +351,7 @@ Future<void> _buildPrebuilt(Uri packageRoot, String triple) async {
         [buildDir.resolve('macos.sh').toFilePath()],
         packageRoot,
         environment: {'TRIPLE': triple},
+        verbose: verbose,
       );
       return;
     }
@@ -330,6 +361,7 @@ Future<void> _buildPrebuilt(Uri packageRoot, String triple) async {
         [buildDir.resolve('linux.sh').toFilePath()],
         packageRoot,
         environment: {'TRIPLE': triple},
+        verbose: verbose,
       );
       return;
     }
@@ -339,6 +371,7 @@ Future<void> _buildPrebuilt(Uri packageRoot, String triple) async {
         [buildDir.resolve('android.sh').toFilePath()],
         packageRoot,
         environment: {'TRIPLE': triple},
+        verbose: verbose,
       );
       return;
     }
@@ -368,7 +401,27 @@ Future<void> _runScript(
   List<String> arguments,
   Uri workingDirectory, {
   Map<String, String>? environment,
+  required bool verbose,
 }) async {
+  if (verbose) {
+    final process = await Process.start(
+      executable,
+      arguments,
+      workingDirectory: workingDirectory.toFilePath(),
+      environment: {...Platform.environment, ...?environment},
+      runInShell: Platform.isWindows,
+    );
+    await Future.wait([
+      process.stdout.forEach(stdout.add),
+      process.stderr.forEach(stderr.add),
+    ]);
+    final exitCode = await process.exitCode;
+    if (exitCode != 0) {
+      throw ProcessException(executable, arguments, 'exit code $exitCode', exitCode);
+    }
+    return;
+  }
+
   final result = await Process.run(
     executable,
     arguments,
@@ -376,10 +429,11 @@ Future<void> _runScript(
     environment: {...Platform.environment, ...?environment},
     runInShell: Platform.isWindows,
   );
-  stdout.write(result.stdout);
-  stderr.write(result.stderr);
   if (result.exitCode != 0) {
-    throw ProcessException(executable, arguments, result.stderr, result.exitCode);
+    final message = StringBuffer()
+      ..writeln(result.stdout)
+      ..writeln(result.stderr);
+    throw ProcessException(executable, arguments, message.toString(), result.exitCode);
   }
 }
 
@@ -392,7 +446,9 @@ Usage:
 
   --all       Build every triple this host can compile; skip others with a log line.
   --triple    Build one triple (repeatable via multiple --triple flags).
+  --verbose   Stream full compiler output (default: quiet, logs under native/out/).
 
 Run from your app after pub get. Set OPENSSL_SKIP_NATIVE_HOOK=1 during openssl tooling.
+Set OPENSSL_BOOTSTRAP_VERBOSE=1 for verbose output without --verbose.
 ''');
 }
