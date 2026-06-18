@@ -71,17 +71,18 @@ Future<int> runBootstrapNative(List<String> args) async {
       : buildAll
           ? buildableTriplesOnHost()
           : [defaultHostTriple()];
+  final buildOrder = _sortBuildTargets(targets);
 
   _printStartBanner(
     packageRoot: packageRoot.path,
     version: version,
     buildAll: buildAll,
     plan: plan,
-    targets: targets,
+    targets: buildOrder,
   );
 
   final results = <_TripleResult>[];
-  for (final triple in targets) {
+  for (final triple in buildOrder) {
     final entry = planTriple(triple);
     if (!entry.buildable) {
       results.add(_TripleResult(
@@ -109,7 +110,7 @@ Future<int> runBootstrapNative(List<String> args) async {
     if (verbose) {
       stdout.writeln('       (verbose: compiler output below)');
     } else {
-      stdout.writeln('       (quiet: ~5-10 min; full log in native/out/build-$triple.log)');
+      stdout.writeln('       (quiet: ~5-10 min; full log in native/out/build-$triple.*.log)');
     }
     stdout.writeln('');
     try {
@@ -287,6 +288,23 @@ String _formatBytes(int bytes) {
   return '$bytes B';
 }
 
+List<String> _sortBuildTargets(List<String> triples) {
+  final host = defaultHostTriple();
+  int rank(String triple) {
+    if (triple == host) return 0;
+    if (triple.startsWith('windows-')) return 1;
+    if (triple.startsWith('android-')) return 2;
+    return 3;
+  }
+
+  final sorted = [...triples]
+    ..sort((a, b) {
+      final byRank = rank(a).compareTo(rank(b));
+      return byRank != 0 ? byRank : a.compareTo(b);
+    });
+  return sorted;
+}
+
 Future<void> _buildPrebuilt(Uri packageRoot, String triple, {required bool verbose}) async {
   final buildDir = packageRoot.resolve('native/build/');
   if (Platform.isWindows) {
@@ -301,7 +319,13 @@ Future<void> _buildPrebuilt(Uri packageRoot, String triple, {required bool verbo
         triple,
         if (!verbose) '-Quiet',
       ];
-      await _runScript(pwsh, args, packageRoot, verbose: verbose);
+      await _runScript(
+        pwsh,
+        args,
+        packageRoot,
+        verbose: verbose,
+        logTriple: triple,
+      );
       return;
     }
     if (triple.startsWith('android-')) {
@@ -315,7 +339,13 @@ Future<void> _buildPrebuilt(Uri packageRoot, String triple, {required bool verbo
         triple,
         if (!verbose) '-Quiet',
       ];
-      await _runScript(pwsh, args, packageRoot, verbose: verbose);
+      await _runScript(
+        pwsh,
+        args,
+        packageRoot,
+        verbose: verbose,
+        logTriple: triple,
+      );
       return;
     }
     throw UnsupportedError('Cannot build $triple on Windows host.');
@@ -396,12 +426,29 @@ Future<String> _resolvePwsh() async {
   throw StateError('pwsh or powershell not found on PATH');
 }
 
+String? _resolveBuildLogPath(Uri packageRoot, String triple) {
+  final outDir = Directory.fromUri(packageRoot.resolve('native/out/'));
+  if (!outDir.existsSync()) return null;
+
+  File? newest;
+  for (final entity in outDir.listSync()) {
+    if (entity is! File) continue;
+    final name = entity.uri.pathSegments.last;
+    if (!name.startsWith('build-$triple')) continue;
+    if (newest == null || entity.lastModifiedSync().isAfter(newest.lastModifiedSync())) {
+      newest = entity;
+    }
+  }
+  return newest?.path;
+}
+
 Future<void> _runScript(
   String executable,
   List<String> arguments,
   Uri workingDirectory, {
   Map<String, String>? environment,
   required bool verbose,
+  String? logTriple,
 }) async {
   if (verbose) {
     final process = await Process.start(
@@ -430,9 +477,39 @@ Future<void> _runScript(
     runInShell: Platform.isWindows,
   );
   if (result.exitCode != 0) {
-    final message = StringBuffer()
-      ..writeln(result.stdout)
-      ..writeln(result.stderr);
+    final message = StringBuffer('exit code ${result.exitCode}');
+    final logPath = logTriple != null ? _resolveBuildLogPath(workingDirectory, logTriple) : null;
+    if (logPath != null) {
+      final log = File(logPath);
+      if (log.existsSync()) {
+        var content = log.readAsStringSync();
+        if (content.startsWith('\uFEFF')) {
+          content = content.substring(1);
+        }
+        final lines = content
+            .split(RegExp(r'\r?\n'))
+            .where((line) => line.trim().isNotEmpty)
+            .toList();
+        final tail = lines.length > 40 ? lines.sublist(lines.length - 40) : lines;
+        message
+          ..writeln()
+          ..writeln('--- log tail ($logPath) ---')
+          ..writeln(tail.join('\n'));
+      }
+    } else {
+      final out = '${result.stdout}'.trim();
+      final err = '${result.stderr}'.trim();
+      if (out.isNotEmpty) {
+        message
+          ..writeln()
+          ..writeln(out);
+      }
+      if (err.isNotEmpty) {
+        message
+          ..writeln()
+          ..writeln(err);
+      }
+    }
     throw ProcessException(executable, arguments, message.toString(), result.exitCode);
   }
 }

@@ -12,6 +12,7 @@ $ErrorActionPreference = 'Stop'
 $VerboseBuild = ($env:OPENSSL_BOOTSTRAP_VERBOSE -eq '1')
 $QuietMode = $Quiet -or (-not $VerboseBuild)
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+. (Join-Path $ScriptDir 'bootstrap_tools.ps1')
 $NativeDir = Resolve-Path (Join-Path $ScriptDir '..')
 $RepoRoot = Resolve-Path (Join-Path $NativeDir '..')
 
@@ -27,84 +28,22 @@ $Config = switch ($Triple) {
 
 function Ensure-OpenSslSrc {
   if (Test-Path (Join-Path $OpenSslSrc 'Configure')) { return $OpenSslSrc }
-  $work = Join-Path $RepoRoot 'native\out\_src'
-  New-Item -ItemType Directory -Force -Path $work | Out-Null
+  $tarballDir = Join-Path $RepoRoot 'native\out\_src'
+  $work = Join-Path $tarballDir $Triple
+  New-Item -ItemType Directory -Force -Path $work, $tarballDir | Out-Null
   $tarball = "openssl-$Version.tar.gz"
   $url = "https://github.com/openssl/openssl/releases/download/openssl-$Version/$tarball"
-  $tarPath = Join-Path $work $tarball
+  $tarPath = Join-Path $tarballDir $tarball
   if (-not (Test-Path $tarPath)) {
-    curl.exe -L $url -o $tarPath
+    $exit = Invoke-NativeCommand -Command { curl.exe -L $url -o $tarPath }
+    if ($exit -ne 0) { throw "Failed to download OpenSSL source (exit $exit)" }
   }
   $extracted = Join-Path $work "openssl-$Version"
+  if (Test-Path (Join-Path $extracted 'Configure')) { return $extracted }
   if (-not (Test-Path $extracted)) {
     tar -xzf $tarPath -C $work
   }
   return $extracted
-}
-
-function Resolve-PerlExe {
-  param([string]$ToolsDir)
-
-  if ($env:PERL -and (Test-Path -LiteralPath $env:PERL)) {
-    return $env:PERL
-  }
-  foreach ($candidate in @(
-      'C:\Strawberry\perl\bin\perl.exe',
-      'C:\strawberry\perl\bin\perl.exe'
-    )) {
-    if (Test-Path -LiteralPath $candidate) { return $candidate }
-  }
-  $cmd = Get-Command perl -ErrorAction SilentlyContinue
-  if ($cmd -and $cmd.Source -notmatch '\\Git\\') {
-    return $cmd.Source
-  }
-
-  New-Item -ItemType Directory -Force -Path $ToolsDir | Out-Null
-  $perlDest = Join-Path $ToolsDir 'perl'
-  $perlExe = Join-Path $perlDest 'perl\bin\perl.exe'
-  if (-not (Test-Path -LiteralPath $perlExe)) {
-    $perlZip = Join-Path $ToolsDir 'perl.zip'
-    $perlUrl = 'https://github.com/StrawberryPerl/Perl-Dist-Strawberry/releases/download/SP_54021_64bit_UCRT/strawberry-perl-5.40.2.1-64bit-portable.zip'
-    if (-not (Test-Path -LiteralPath $perlZip)) {
-      Write-Host "Downloading portable Strawberry Perl..."
-      curl.exe -L $perlUrl -o $perlZip
-    }
-    if (Test-Path -LiteralPath $perlDest) {
-      Remove-Item -Recurse -Force $perlDest
-    }
-    New-Item -ItemType Directory -Force -Path $perlDest | Out-Null
-    Expand-Archive -Path $perlZip -DestinationPath $perlDest -Force
-  }
-  if (-not (Test-Path -LiteralPath $perlExe)) {
-    throw "perl not found at $perlExe after download (check $perlDest layout)"
-  }
-  return $perlExe
-}
-
-function Ensure-JomOnPath {
-  param([string]$ToolsDir)
-
-  if (Get-Command jom -ErrorAction SilentlyContinue) { return }
-  New-Item -ItemType Directory -Force -Path $ToolsDir | Out-Null
-  $jomDest = Join-Path $ToolsDir 'jom'
-  $jomExe = Join-Path $jomDest 'jom.exe'
-  if (-not (Test-Path -LiteralPath $jomExe)) {
-    $jomZip = Join-Path $ToolsDir 'jom.zip'
-    $jomUrl = 'https://download.qt.io/official_releases/jom/jom_1_1_5.zip'
-    if (-not (Test-Path -LiteralPath $jomZip)) {
-      Write-Host "Downloading jom..."
-      curl.exe -L $jomUrl -o $jomZip
-    }
-    if (Test-Path -LiteralPath $jomDest) {
-      Remove-Item -Recurse -Force $jomDest
-    }
-    New-Item -ItemType Directory -Force -Path $jomDest | Out-Null
-    Expand-Archive -Path $jomZip -DestinationPath $jomDest -Force
-  }
-  if (-not (Test-Path -LiteralPath $jomExe)) {
-    throw "jom not found at $jomExe after download"
-  }
-  $env:PATH = "$(Split-Path -Parent $jomExe);$env:PATH"
 }
 
 function Get-VcVarsEnv([string]$Arch) {
@@ -123,7 +62,7 @@ function Get-VcVarsEnv([string]$Arch) {
       return $env
     }
   }
-  throw "vcvars not found"
+  throw 'vcvars not found'
 }
 
 $src = Ensure-OpenSslSrc
@@ -133,43 +72,36 @@ foreach ($k in $vcEnv.Keys) { Set-Item -Path "env:$k" -Value $vcEnv[$k] }
 
 $toolsDir = Join-Path $RepoRoot 'native\out\_bootstrap-tools'
 $perl = Resolve-PerlExe -ToolsDir $toolsDir
-Ensure-JomOnPath -ToolsDir $toolsDir
+Ensure-JomOnPath -ToolsDir $toolsDir | Out-Null
 Write-Host "Using perl: $perl"
 
 $logDir = Join-Path $RepoRoot 'native\out'
-New-Item -ItemType Directory -Force -Path $logDir | Out-Null
-$logFile = Join-Path $logDir "build-$Triple.log"
-
-function Show-BuildLogTail {
-  param([string]$Path, [int]$Lines = 40)
-  if (Test-Path -LiteralPath $Path) {
-    Write-Host "--- last $Lines lines of $Path ---"
-    Get-Content -Path $Path -Tail $Lines | ForEach-Object { Write-Host $_ }
-    Write-Host '--- end log tail ---'
-  }
-}
+$logFile = New-BuildLogPath -LogDir $logDir -Triple $Triple
 
 Push-Location $src
-$args = @('Configure', $Config, 'no-unit-test', 'no-makedepend', 'no-ssl', 'no-apps', 'no-asm', '/FS')
+$configureArgs = @('Configure', $Config, 'no-unit-test', 'no-makedepend', 'no-ssl', 'no-apps', 'no-asm', '/FS')
 if ($QuietMode) {
   Write-Host "Configuring OpenSSL for $Triple (quiet; full log: $logFile)"
-  "" | Set-Content -Path $logFile -Encoding UTF8
-  & $perl @args *>> $logFile 2>&1
-  if ($LASTEXITCODE -ne 0) {
+  Initialize-BuildLog -Path $logFile
+  $cfgExit = Invoke-Executable -FilePath $perl -ArgumentList $configureArgs -LogFile $logFile -Quiet
+  if ($cfgExit -ne 0) {
     Show-BuildLogTail -Path $logFile
-    throw "OpenSSL Configure failed (exit $LASTEXITCODE)"
+    throw "OpenSSL Configure failed (exit $cfgExit)"
   }
-  Write-Host "Compiling libcrypto with jom ..."
-  & jom -j $env:NUMBER_OF_PROCESSORS *>> $logFile 2>&1
-  if ($LASTEXITCODE -ne 0) {
+  Write-Host 'Compiling libcrypto with jom ...'
+  $jomExe = (Get-Command jom).Source
+  $jomExit = Invoke-Executable -FilePath $jomExe -ArgumentList @('-j', $env:NUMBER_OF_PROCESSORS) -LogFile $logFile -Quiet
+  if ($jomExit -ne 0) {
     Show-BuildLogTail -Path $logFile
-    throw "jom build failed (exit $LASTEXITCODE)"
+    throw "jom build failed (exit $jomExit)"
   }
   Write-Host "Build finished. Log: $logFile"
 } else {
-  & $perl @args
+  & $perl @configureArgs
+  if ($LASTEXITCODE -ne 0) { throw "OpenSSL Configure failed (exit $LASTEXITCODE)" }
   if (-not (Get-Command jom -ErrorAction SilentlyContinue)) { throw 'jom required on PATH' }
-  & jom -j $env:NUMBER_OF_PROCESSORS
+  jom -j $env:NUMBER_OF_PROCESSORS
+  if ($LASTEXITCODE -ne 0) { throw "jom build failed (exit $LASTEXITCODE)" }
 }
 Pop-Location
 
